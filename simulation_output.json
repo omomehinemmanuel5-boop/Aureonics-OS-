@@ -1,0 +1,277 @@
+{
+  "source": "synthetic_fallback_no_live_server",
+  "tau_configured": 0.6,
+  "tau_empirical": 0.618,
+  "mean_M": 0.6467,
+  "std_M": 0.0287,
+  "trajectory": [
+    {
+      "step": 0,
+      "timestamp": "2026-03-01T12:00:00",
+      "week_start": "2026-03-01",
+      "C": 0.72,
+      "R": 0.68,
+      "S": 0.66,
+      "M": 0.66,
+      "pre_correction": {
+        "C": 0.72,
+        "R": 0.68,
+        "S": 0.66,
+        "M": 0.66
+      },
+      "post_correction": {
+        "C": 0.72,
+        "R": 0.68,
+        "S": 0.66,
+        "M": 0.66
+      },
+      "governor_active": false,
+      "violated_pillars": [],
+      "corrections": [],
+      "weakest_pillar": "Sovereignty",
+      "governor_alert": "System stable",
+      "basin": "analytical"
+    },
+    {
+      "step": 1,
+      "timestamp": "2026-03-08T12:00:00",
+      "week_start": "2026-03-08",
+      "C": 0.68,
+      "R": 0.67,
+      "S": 0.69,
+      "M": 0.67,
+      "pre_correction": {
+        "C": 0.58,
+        "R": 0.67,
+        "S": 0.69,
+        "M": 0.58
+      },
+      "post_correction": {
+        "C": 0.68,
+        "R": 0.67,
+        "S": 0.69,
+        "M": 0.67
+      },
+      "governor_active": true,
+      "violated_pillars": [
+        "Continuity"
+      ],
+      "corrections": [
+        {
+          "pillar": "Continuity",
+          "action": "enforce project alignment"
+        }
+      ],
+      "weakest_pillar": "Reciprocity",
+      "governor_alert": "Reciprocity collapse: increase signal + feedback",
+      "basin": "exploratory"
+    },
+    {
+      "step": 2,
+      "timestamp": "2026-03-15T12:00:00",
+      "week_start": "2026-03-15",
+      "C": 0.62,
+      "R": 0.67,
+      "S": 0.71,
+      "M": 0.62,
+      "pre_correction": {
+        "C": 0.62,
+        "R": 0.55,
+        "S": 0.71,
+        "M": 0.55
+      },
+      "post_correction": {
+        "C": 0.62,
+        "R": 0.67,
+        "S": 0.71,
+        "M": 0.62
+      },
+      "governor_active": true,
+      "violated_pillars": [
+        "Reciprocity"
+      ],
+      "corrections": [
+        {
+          "pillar": "Reciprocity",
+          "action": "increase signal + feedback"
+        }
+      ],
+      "weakest_pillar": "Continuity",
+      "governor_alert": "Continuity collapse: enforce project alignment",
+      "basin": "exploratory"
+    },
+    {
+      "step": 3,
+      "timestamp": "2026-03-22T12:00:00",
+      "week_start": "2026-03-22",
+      "C": 0.63,
+      "R": 0.66,
+      "S": 0.65,
+      "M": 0.63,
+      "pre_correction": {
+        "C": 0.63,
+        "R": 0.57,
+        "S": 0.54,
+        "M": 0.54
+      },
+      "post_correction": {
+        "C": 0.63,
+        "R": 0.66,
+        "S": 0.65,
+        "M": 0.63
+      },
+      "governor_active": true,
+      "violated_pillars": [
+        "Reciprocity",
+        "Sovereignty"
+      ],
+      "corrections": [
+        {
+          "pillar": "Reciprocity",
+          "action": "increase signal + feedback"
+        },
+        {
+          "pillar": "Sovereignty",
+          "action": "fix invalid tasks + diversify decisions"
+        }
+      ],
+      "weakest_pillar": "Continuity",
+      "governor_alert": "Continuity collapse: enforce project alignment",
+      "basin": "collaborative"
+    },
+    {
+      "step": 4,
+      "timestamp": "2026-03-29T12:00:00",
+      "week_start": "2026-03-29",
+      "C": 0.74,
+      "R": 0.72,
+      "S": 0.69,
+      "M": 0.69,
+      "pre_correction": {
+        "C": 0.74,
+        "R": 0.72,
+        "S": 0.69,
+        "M": 0.69
+      },
+      "post_correction": {
+        "C": 0.74,
+        "R": 0.72,
+        "S": 0.69,
+        "M": 0.69
+      },
+      "governor_active": false,
+      "violated_pillars": [],
+      "corrections": [],
+      "weakest_pillar": "Sovereignty",
+      "governor_alert": "System stable",
+      "basin": "analytical"
+    },
+    {
+      "step": 5,
+      "timestamp": "2026-04-05T12:00:00",
+      "week_start": "2026-04-05",
+      "C": 0.67,
+      "R": 0.61,
+      "S": 0.68,
+      "M": 0.61,
+      "pre_correction": {
+        "C": 0.59,
+        "R": 0.61,
+        "S": 0.58,
+        "M": 0.58
+      },
+      "post_correction": {
+        "C": 0.67,
+        "R": 0.61,
+        "S": 0.68,
+        "M": 0.61
+      },
+      "governor_active": true,
+      "violated_pillars": [
+        "Continuity",
+        "Sovereignty"
+      ],
+      "corrections": [
+        {
+          "pillar": "Continuity",
+          "action": "enforce project alignment"
+        },
+        {
+          "pillar": "Sovereignty",
+          "action": "fix invalid tasks + diversify decisions"
+        }
+      ],
+      "weakest_pillar": "Reciprocity",
+      "governor_alert": "Reciprocity collapse: increase signal + feedback",
+      "basin": "exploratory"
+    }
+  ],
+  "alert_events": [
+    {
+      "step": 1,
+      "timestamp": "2026-03-08T12:00:00"
+    },
+    {
+      "step": 2,
+      "timestamp": "2026-03-15T12:00:00"
+    },
+    {
+      "step": 3,
+      "timestamp": "2026-03-22T12:00:00"
+    },
+    {
+      "step": 5,
+      "timestamp": "2026-04-05T12:00:00"
+    }
+  ],
+  "threshold_violations": [
+    {
+      "step": 1,
+      "violated_pillars": [
+        "Continuity"
+      ]
+    },
+    {
+      "step": 2,
+      "violated_pillars": [
+        "Reciprocity"
+      ]
+    },
+    {
+      "step": 3,
+      "violated_pillars": [
+        "Reciprocity",
+        "Sovereignty"
+      ]
+    },
+    {
+      "step": 5,
+      "violated_pillars": [
+        "Continuity",
+        "Sovereignty"
+      ]
+    }
+  ],
+  "basin_transitions": [
+    {
+      "step": 1,
+      "from": "analytical",
+      "to": "exploratory"
+    },
+    {
+      "step": 3,
+      "from": "exploratory",
+      "to": "collaborative"
+    },
+    {
+      "step": 4,
+      "from": "collaborative",
+      "to": "analytical"
+    },
+    {
+      "step": 5,
+      "from": "analytical",
+      "to": "exploratory"
+    }
+  ]
+}
