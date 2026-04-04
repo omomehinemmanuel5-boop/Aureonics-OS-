@@ -4,8 +4,13 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.models.entities import Project, WeeklyProfile
+from app.models.entities import Project, Task, WeeklyProfile
 from app.services.governor_service import THRESHOLD, compute_alert, governor_state, weakest_pillar
+from app.services.metrics_service import compute_profile
+
+MODES = ["Analytical", "Collaborative", "Exploratory"]
+TASK_TYPES = ["Audit", "Research", "Execution", "Review"]
+PRIORITIES = ["Low", "Medium", "High"]
 
 BASIN_BY_PILLAR = {
     "Continuity": "analytical",
@@ -31,14 +36,6 @@ def seed_project(db: Session) -> Project:
     db.commit()
     db.refresh(project)
     return project
-
-
-def _normalize_simplex(c: float, r: float, s: float) -> tuple[float, float, float]:
-    c = max(c, 1e-6)
-    r = max(r, 1e-6)
-    s = max(s, 1e-6)
-    total = c + r + s
-    return c / total, r / total, s / total
 
 
 def _basin_for_step(c: float, r: float, s: float) -> str:
