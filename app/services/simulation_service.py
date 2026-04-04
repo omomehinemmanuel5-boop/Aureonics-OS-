@@ -30,7 +30,7 @@ def seed_project(db: Session) -> Project:
         objective="Stress test constitutional governance",
         steps='["ingest", "plan", "execute"]',
         risks='["invalid tasks", "low reciprocity"]',
-        success_criteria='["M >= 0.6"]',
+        success_criteria='["M >= tau"]',
     )
     db.add(project)
     db.commit()
@@ -43,19 +43,41 @@ def _basin_for_step(c: float, r: float, s: float) -> str:
     return BASIN_BY_PILLAR[dominant]
 
 
-def _correction_boost(c: float, r: float, s: float, violated: list[str]) -> tuple[float, float, float]:
-    # This simulates post-governor correction effects while keeping values bounded.
+def _intrinsic_update(c: float, r: float, s: float, delta: float, uncertainty: float) -> tuple[float, float, float]:
+    # Continuity persistence avoids instant collapse if CCP-like signal goes weak.
+    persistence = 0.88
+    c_signal = (0.75 * c) + (0.25 * persistence * c)
+
+    # Environmental instability introduces bounded irregular motion.
+    r_signal = r + (0.12 * delta) - (0.05 * uncertainty)
+    s_signal = s + (0.10 * uncertainty) - (0.04 * delta)
+
+    c_next = c_signal + random.uniform(-0.03, 0.03)
+    r_next = r_signal + random.uniform(-0.03, 0.03)
+    s_next = s_signal + random.uniform(-0.03, 0.03)
+    return _normalize_simplex(c_next, r_next, s_next)
+
+
+def _apply_governor(c: float, r: float, s: float, violated: list[str]) -> tuple[float, float, float]:
+    # Small targeted corrections (not hard overrides) to preserve basin motion.
     if "Continuity" in violated:
-        c = min(1.0, c + 0.12)
+        c += 0.04
+        r -= 0.02
+        s -= 0.02
     if "Reciprocity" in violated:
-        r = min(1.0, r + 0.12)
+        r += 0.04
+        c -= 0.02
+        s -= 0.02
     if "Sovereignty" in violated:
-        s = min(1.0, s + 0.12)
-    return c, r, s
+        s += 0.04
+        c -= 0.02
+        r -= 0.02
+    return _normalize_simplex(c, r, s)
 
 
 def run_simulation(db: Session, weeks: int = 4) -> dict:
-    project = seed_project(db)
+    seed_project(db)
+
     trajectory = []
     alert_events = []
     threshold_violations = []
@@ -64,49 +86,26 @@ def run_simulation(db: Session, weeks: int = 4) -> dict:
     today = date.today()
     previous_basin = None
 
+    c, r, s = 0.34, 0.33, 0.33
+
     for w in range(weeks):
         week_start = today - timedelta(days=today.weekday()) + timedelta(days=w * 7)
-        for i in range(10):
-            idx = f"w{w}-t{i}-{int(datetime.utcnow().timestamp())}-{random.randint(100,999)}"
-            invalid = random.random() < (0.10 + (0.06 * w))
-            from_signal = random.random() < 0.6
-            has_metric = from_signal and (random.random() < max(0.2, 0.8 - (0.1 * w)))
-            task = Task(
-                id=idx,
-                title=f"Sim task {idx}",
-                project_id=None if invalid else project.id,
-                priority=None if invalid else random.choice(PRIORITIES),
-                status="Done",
-                from_signal=from_signal,
-                has_metric=has_metric,
-                task_type=random.choice(TASK_TYPES),
-                mode=random.choice(MODES),
-                is_invalid=invalid,
-                invalid_reason="simulated invalid" if invalid else "",
-                correction_queue=invalid,
-                completed_at=datetime.utcnow(),
-            )
-            db.add(task)
+        delta = random.uniform(-1.0, 1.0)
+        uncertainty = random.uniform(0.0, 1.0)
 
-        db.commit()
-
-        all_tasks = db.query(Task).all()
-        all_projects = db.query(Project).all()
-        profile = compute_profile(all_tasks, all_projects)
-
-        c_pre = profile["continuity_score"]
-        r_pre = profile["reciprocity_score"]
-        s_pre = profile["sovereignty_score"]
+        c_pre, r_pre, s_pre = _intrinsic_update(c, r, s, delta, uncertainty)
         m_pre = min(c_pre, r_pre, s_pre)
 
         gov = governor_state(c_pre, r_pre, s_pre, THRESHOLD)
         violated = gov["violated_pillars"]
         if gov["active"]:
-            c_post, r_post, s_post = _correction_boost(c_pre, r_pre, s_pre, violated)
+            c_post, r_post, s_post = _apply_governor(c_pre, r_pre, s_pre, violated)
         else:
             c_post, r_post, s_post = c_pre, r_pre, s_pre
 
+        c_post, r_post, s_post = _normalize_simplex(c_post, r_post, s_post)
         m_post = min(c_post, r_post, s_post)
+
         weakest = weakest_pillar(c_post, r_post, s_post)
         basin = _basin_for_step(c_post, r_post, s_post)
         _, alert = compute_alert(c_post, r_post, s_post)
@@ -115,11 +114,13 @@ def run_simulation(db: Session, weeks: int = 4) -> dict:
             "step": w,
             "timestamp": datetime.utcnow().isoformat(),
             "week_start": week_start.isoformat(),
+            "delta": round(delta, 4),
+            "uncertainty": round(uncertainty, 4),
             "C": round(c_post, 4),
             "R": round(r_post, 4),
             "S": round(s_post, 4),
             "M": round(m_post, 4),
-            "pre_correction": {"C": c_pre, "R": r_pre, "S": s_pre, "M": m_pre},
+            "pre_correction": {"C": round(c_pre, 4), "R": round(r_pre, 4), "S": round(s_pre, 4), "M": round(m_pre, 4)},
             "post_correction": {"C": round(c_post, 4), "R": round(r_post, 4), "S": round(s_post, 4), "M": round(m_post, 4)},
             "governor_active": gov["active"],
             "violated_pillars": violated,
@@ -150,6 +151,8 @@ def run_simulation(db: Session, weeks: int = 4) -> dict:
         )
         db.add(weekly)
         db.commit()
+
+        c, r, s = c_post, r_post, s_post
 
     m_values = [step["post_correction"]["M"] for step in trajectory]
     mean_m = float(statistics.fmean(m_values)) if m_values else 0.0

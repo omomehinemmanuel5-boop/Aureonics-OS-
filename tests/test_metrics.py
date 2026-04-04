@@ -33,7 +33,7 @@ class TestAureonicsMetrics(unittest.TestCase):
         self.assertGreater(mostly_compliant["adv"], violation_heavy["adv"])
 
     def test_margin_tracks_weakest_pillar(self):
-        weakest, alert = compute_alert(0.82, 0.74, 0.41)
+        weakest, alert = compute_alert(0.82, 0.74, 0.11)
         self.assertEqual(weakest, "Sovereignty")
         self.assertIn("Sovereignty collapse", alert)
 

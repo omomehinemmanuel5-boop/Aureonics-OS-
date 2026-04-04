@@ -9,7 +9,7 @@ A FastAPI backend implementing the Aureonics constitutional framework using pape
 The service computes:
 
 - Stability Margin: `M = min(C, R, S)` where `C=CCP`, `R=IEC`, `S=ADV`
-- Governor alerts with `tau = 0.6`
+- Governor alerts with `tau = 0.15` (simplex-scale default)
 
 ## Run locally
 
