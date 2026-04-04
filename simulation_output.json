@@ -1,29 +1,31 @@
 {
   "source": "synthetic_fallback_no_live_server",
-  "tau_configured": 0.6,
-  "tau_empirical": 0.618,
-  "mean_M": 0.6467,
-  "std_M": 0.0287,
+  "tau_configured": 0.15,
+  "tau_empirical": 0.1769,
+  "mean_M": 0.205,
+  "std_M": 0.0281,
   "trajectory": [
     {
       "step": 0,
       "timestamp": "2026-03-01T12:00:00",
       "week_start": "2026-03-01",
-      "C": 0.72,
-      "R": 0.68,
-      "S": 0.66,
-      "M": 0.66,
+      "delta": 0.2,
+      "uncertainty": 0.25,
+      "C": 0.5,
+      "R": 0.28,
+      "S": 0.22,
+      "M": 0.22,
       "pre_correction": {
-        "C": 0.72,
-        "R": 0.68,
-        "S": 0.66,
-        "M": 0.66
+        "C": 0.5,
+        "R": 0.28,
+        "S": 0.22,
+        "M": 0.22
       },
       "post_correction": {
-        "C": 0.72,
-        "R": 0.68,
-        "S": 0.66,
-        "M": 0.66
+        "C": 0.5,
+        "R": 0.28,
+        "S": 0.22,
+        "M": 0.22
       },
       "governor_active": false,
       "violated_pillars": [],
@@ -36,128 +38,139 @@
       "step": 1,
       "timestamp": "2026-03-08T12:00:00",
       "week_start": "2026-03-08",
-      "C": 0.68,
-      "R": 0.67,
-      "S": 0.69,
-      "M": 0.67,
+      "delta": -0.3,
+      "uncertainty": 0.35,
+      "C": 0.39,
+      "R": 0.41,
+      "S": 0.2,
+      "M": 0.2,
       "pre_correction": {
-        "C": 0.58,
-        "R": 0.67,
-        "S": 0.69,
-        "M": 0.58
+        "C": 0.39,
+        "R": 0.41,
+        "S": 0.2,
+        "M": 0.2
       },
       "post_correction": {
-        "C": 0.68,
-        "R": 0.67,
-        "S": 0.69,
-        "M": 0.67
+        "C": 0.39,
+        "R": 0.41,
+        "S": 0.2,
+        "M": 0.2
       },
-      "governor_active": true,
-      "violated_pillars": [
-        "Continuity"
-      ],
-      "corrections": [
-        {
-          "pillar": "Continuity",
-          "action": "enforce project alignment"
-        }
-      ],
-      "weakest_pillar": "Reciprocity",
-      "governor_alert": "Reciprocity collapse: increase signal + feedback",
-      "basin": "exploratory"
+      "governor_active": false,
+      "violated_pillars": [],
+      "corrections": [],
+      "weakest_pillar": "Sovereignty",
+      "governor_alert": "System stable",
+      "basin": "collaborative"
     },
     {
       "step": 2,
       "timestamp": "2026-03-15T12:00:00",
       "week_start": "2026-03-15",
-      "C": 0.62,
-      "R": 0.67,
-      "S": 0.71,
-      "M": 0.62,
+      "delta": 0.4,
+      "uncertainty": 0.45,
+      "C": 0.24,
+      "R": 0.33,
+      "S": 0.43,
+      "M": 0.24,
       "pre_correction": {
-        "C": 0.62,
-        "R": 0.55,
-        "S": 0.71,
-        "M": 0.55
+        "C": 0.24,
+        "R": 0.33,
+        "S": 0.43,
+        "M": 0.24
       },
       "post_correction": {
-        "C": 0.62,
-        "R": 0.67,
-        "S": 0.71,
-        "M": 0.62
+        "C": 0.24,
+        "R": 0.33,
+        "S": 0.43,
+        "M": 0.24
       },
-      "governor_active": true,
-      "violated_pillars": [
-        "Reciprocity"
-      ],
-      "corrections": [
-        {
-          "pillar": "Reciprocity",
-          "action": "increase signal + feedback"
-        }
-      ],
+      "governor_active": false,
+      "violated_pillars": [],
+      "corrections": [],
       "weakest_pillar": "Continuity",
-      "governor_alert": "Continuity collapse: enforce project alignment",
+      "governor_alert": "System stable",
       "basin": "exploratory"
     },
     {
       "step": 3,
       "timestamp": "2026-03-22T12:00:00",
       "week_start": "2026-03-22",
-      "C": 0.63,
-      "R": 0.66,
-      "S": 0.65,
-      "M": 0.63,
+      "delta": -0.5,
+      "uncertainty": 0.25,
+      "C": 0.16,
+      "R": 0.58,
+      "S": 0.26,
+      "M": 0.16,
       "pre_correction": {
-        "C": 0.63,
-        "R": 0.57,
-        "S": 0.54,
-        "M": 0.54
+        "C": 0.16,
+        "R": 0.58,
+        "S": 0.26,
+        "M": 0.16
       },
       "post_correction": {
-        "C": 0.63,
-        "R": 0.66,
-        "S": 0.65,
-        "M": 0.63
+        "C": 0.16,
+        "R": 0.58,
+        "S": 0.26,
+        "M": 0.16
       },
-      "governor_active": true,
-      "violated_pillars": [
-        "Reciprocity",
-        "Sovereignty"
-      ],
-      "corrections": [
-        {
-          "pillar": "Reciprocity",
-          "action": "increase signal + feedback"
-        },
-        {
-          "pillar": "Sovereignty",
-          "action": "fix invalid tasks + diversify decisions"
-        }
-      ],
+      "governor_active": false,
+      "violated_pillars": [],
+      "corrections": [],
       "weakest_pillar": "Continuity",
-      "governor_alert": "Continuity collapse: enforce project alignment",
+      "governor_alert": "System stable",
       "basin": "collaborative"
     },
     {
       "step": 4,
       "timestamp": "2026-03-29T12:00:00",
       "week_start": "2026-03-29",
-      "C": 0.74,
-      "R": 0.72,
-      "S": 0.69,
-      "M": 0.69,
+      "delta": 0.6,
+      "uncertainty": 0.35,
+      "C": 0.18,
+      "R": 0.27,
+      "S": 0.55,
+      "M": 0.18,
       "pre_correction": {
-        "C": 0.74,
-        "R": 0.72,
-        "S": 0.69,
-        "M": 0.69
+        "C": 0.18,
+        "R": 0.27,
+        "S": 0.55,
+        "M": 0.18
       },
       "post_correction": {
-        "C": 0.74,
-        "R": 0.72,
-        "S": 0.69,
-        "M": 0.69
+        "C": 0.18,
+        "R": 0.27,
+        "S": 0.55,
+        "M": 0.18
+      },
+      "governor_active": false,
+      "violated_pillars": [],
+      "corrections": [],
+      "weakest_pillar": "Continuity",
+      "governor_alert": "System stable",
+      "basin": "exploratory"
+    },
+    {
+      "step": 5,
+      "timestamp": "2026-04-05T12:00:00",
+      "week_start": "2026-04-05",
+      "delta": -0.7,
+      "uncertainty": 0.45,
+      "C": 0.46,
+      "R": 0.31,
+      "S": 0.23,
+      "M": 0.23,
+      "pre_correction": {
+        "C": 0.46,
+        "R": 0.31,
+        "S": 0.23,
+        "M": 0.23
+      },
+      "post_correction": {
+        "C": 0.46,
+        "R": 0.31,
+        "S": 0.23,
+        "M": 0.23
       },
       "governor_active": false,
       "violated_pillars": [],
@@ -165,97 +178,19 @@
       "weakest_pillar": "Sovereignty",
       "governor_alert": "System stable",
       "basin": "analytical"
-    },
-    {
-      "step": 5,
-      "timestamp": "2026-04-05T12:00:00",
-      "week_start": "2026-04-05",
-      "C": 0.67,
-      "R": 0.61,
-      "S": 0.68,
-      "M": 0.61,
-      "pre_correction": {
-        "C": 0.59,
-        "R": 0.61,
-        "S": 0.58,
-        "M": 0.58
-      },
-      "post_correction": {
-        "C": 0.67,
-        "R": 0.61,
-        "S": 0.68,
-        "M": 0.61
-      },
-      "governor_active": true,
-      "violated_pillars": [
-        "Continuity",
-        "Sovereignty"
-      ],
-      "corrections": [
-        {
-          "pillar": "Continuity",
-          "action": "enforce project alignment"
-        },
-        {
-          "pillar": "Sovereignty",
-          "action": "fix invalid tasks + diversify decisions"
-        }
-      ],
-      "weakest_pillar": "Reciprocity",
-      "governor_alert": "Reciprocity collapse: increase signal + feedback",
-      "basin": "exploratory"
     }
   ],
-  "alert_events": [
-    {
-      "step": 1,
-      "timestamp": "2026-03-08T12:00:00"
-    },
-    {
-      "step": 2,
-      "timestamp": "2026-03-15T12:00:00"
-    },
-    {
-      "step": 3,
-      "timestamp": "2026-03-22T12:00:00"
-    },
-    {
-      "step": 5,
-      "timestamp": "2026-04-05T12:00:00"
-    }
-  ],
-  "threshold_violations": [
-    {
-      "step": 1,
-      "violated_pillars": [
-        "Continuity"
-      ]
-    },
-    {
-      "step": 2,
-      "violated_pillars": [
-        "Reciprocity"
-      ]
-    },
-    {
-      "step": 3,
-      "violated_pillars": [
-        "Reciprocity",
-        "Sovereignty"
-      ]
-    },
-    {
-      "step": 5,
-      "violated_pillars": [
-        "Continuity",
-        "Sovereignty"
-      ]
-    }
-  ],
+  "alert_events": [],
+  "threshold_violations": [],
   "basin_transitions": [
     {
       "step": 1,
       "from": "analytical",
+      "to": "collaborative"
+    },
+    {
+      "step": 2,
+      "from": "collaborative",
       "to": "exploratory"
     },
     {
@@ -266,12 +201,12 @@
     {
       "step": 4,
       "from": "collaborative",
-      "to": "analytical"
+      "to": "exploratory"
     },
     {
       "step": 5,
-      "from": "analytical",
-      "to": "exploratory"
+      "from": "exploratory",
+      "to": "analytical"
     }
   ]
 }

@@ -1,4 +1,4 @@
-THRESHOLD = 0.6
+THRESHOLD = 0.15
 
 
 def violated_pillars(continuity: float, reciprocity: float, sovereignty: float, tau: float = THRESHOLD) -> list[str]:
