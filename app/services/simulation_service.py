@@ -1,4 +1,5 @@
 import random
+from argparse import ArgumentParser
 from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
@@ -7,8 +8,10 @@ from app.models.entities import Project, WeeklyProfile
 from app.services.governor_service import THRESHOLD
 
 ALPHA = 0.4
-KAPPA = 0.9
+KAPPA = 2.0
 DT = 0.05
+SWEEP_ALPHA = [0.2, 0.5, 1.0]
+SWEEP_K = [1.0, 2.0, 5.0, 10.0]
 
 
 def seed_project(db: Session) -> Project:
@@ -81,15 +84,27 @@ def simulate_mode(
     governor_enabled: bool,
     tau: float = THRESHOLD,
     dt: float = DT,
+    alpha: float = ALPHA,
+    k: float = KAPPA,
+    seed: int | None = None,
 ) -> dict:
+    rng = random.Random(seed) if seed is not None else random
     x = [0.34, 0.33, 0.33]
     trajectory = []
+    violations = 0
+    time_below_tau = 0
+    recovery_times: list[int] = []
+    violation_start: int | None = None
+    collapse_detected = False
 
     for t in range(steps):
-        z = sample_environment()
+        z = {
+            "delta": rng.uniform(-0.5, 0.5),
+            "uncertainty": rng.uniform(0.0, 1.0),
+        }
 
-        F = compute_F(x, z)
-        G = compute_G(x, tau=tau, governor_enabled=governor_enabled)
+        F = compute_F(x, z, alpha=alpha)
+        G = compute_G(x, tau=tau, k=k, governor_enabled=governor_enabled)
 
         dx = [F[i] + G[i] for i in range(3)]
         x = [x[i] + (dt * dx[i]) for i in range(3)]
@@ -98,6 +113,18 @@ def simulate_mode(
         x = [xi / total for xi in x]
 
         M = min(x)
+        is_below = M < tau
+        if is_below:
+            time_below_tau += 1
+            if violation_start is None:
+                violation_start = t
+                violations += 1
+        elif violation_start is not None:
+            recovery_times.append(t - violation_start)
+            violation_start = None
+
+        if M < 0.01:
+            collapse_detected = True
 
         trajectory.append(
             {
@@ -112,20 +139,88 @@ def simulate_mode(
     m_values = [step["M"] for step in trajectory]
     min_m = min(m_values) if m_values else 0.0
     avg_m = sum(m_values) / len(m_values) if m_values else 0.0
+    if violation_start is not None:
+        recovery_times.append(steps - violation_start)
 
     return {
         "trajectory": trajectory,
         "min_M": min_m,
         "avg_M": avg_m,
         "governor_enabled": governor_enabled,
+        "alpha": alpha,
+        "k": k,
+        "dt": dt,
+        "steps": steps,
+        "seed": seed,
+        "violations": violations,
+        "time_below_tau": time_below_tau,
+        "recovery_times": recovery_times,
+        "max_recovery_time": max(recovery_times) if recovery_times else 0,
+        "avg_recovery_time": (sum(recovery_times) / len(recovery_times)) if recovery_times else 0.0,
+        "collapse_detected": collapse_detected,
     }
 
 
-def run_simulation(db: Session, weeks: int = 4) -> dict:
+def parameter_sweep(*, steps: int, dt: float, tau: float, seed: int | None = None) -> list[dict]:
+    sweep_results: list[dict] = []
+    for alpha in SWEEP_ALPHA:
+        for k in SWEEP_K:
+            run_metrics = []
+            for offset in range(3):
+                run_seed = (seed + offset) if seed is not None else None
+                result = simulate_mode(
+                    steps=steps,
+                    governor_enabled=True,
+                    tau=tau,
+                    dt=dt,
+                    alpha=alpha,
+                    k=k,
+                    seed=run_seed,
+                )
+                run_metrics.append(result)
+
+            avg_time_below_tau = sum(run["time_below_tau"] for run in run_metrics) / len(run_metrics)
+            avg_recovery_time = sum(run["avg_recovery_time"] for run in run_metrics) / len(run_metrics)
+            max_recovery_time = max(run["max_recovery_time"] for run in run_metrics)
+            consistency_score = max(
+                abs(run_metrics[i]["avg_recovery_time"] - run_metrics[0]["avg_recovery_time"])
+                for i in range(1, len(run_metrics))
+            ) if len(run_metrics) > 1 else 0.0
+
+            sweep_results.append(
+                {
+                    "alpha": alpha,
+                    "k": k,
+                    "avg_time_below_tau": avg_time_below_tau,
+                    "avg_recovery_time": avg_recovery_time,
+                    "max_recovery_time": max_recovery_time,
+                    "collapse_runs": sum(1 for run in run_metrics if run["collapse_detected"]),
+                    "consistent_across_runs": consistency_score <= 1.0,
+                    "meets_goal": (
+                        max_recovery_time <= 3
+                        and avg_time_below_tau <= 3
+                        and sum(1 for run in run_metrics if run["collapse_detected"]) == 0
+                    ),
+                }
+            )
+    return sweep_results
+
+
+def run_simulation(
+    db: Session,
+    *,
+    steps: int = 4,
+    tau: float = THRESHOLD,
+    dt: float = DT,
+    alpha: float = ALPHA,
+    k: float = KAPPA,
+    seed: int | None = None,
+) -> dict:
     seed_project(db)
 
-    no_governor = simulate_mode(steps=weeks, governor_enabled=False, tau=THRESHOLD, dt=DT)
-    with_governor = simulate_mode(steps=weeks, governor_enabled=True, tau=THRESHOLD, dt=DT)
+    no_governor = simulate_mode(steps=steps, governor_enabled=False, tau=tau, dt=dt, alpha=alpha, k=k, seed=seed)
+    with_governor = simulate_mode(steps=steps, governor_enabled=True, tau=tau, dt=dt, alpha=alpha, k=k, seed=seed)
+    sweep = parameter_sweep(steps=steps, dt=dt, tau=tau, seed=seed)
 
     today = date.today()
     for step in with_governor["trajectory"]:
@@ -149,4 +244,31 @@ def run_simulation(db: Session, weeks: int = 4) -> dict:
     return {
         "mode_no_governor": no_governor,
         "mode_with_governor": with_governor,
+        "parameter_sweep": sweep,
     }
+
+
+def cli() -> None:
+    parser = ArgumentParser(description="Run Aureonics simulation and control sweep")
+    parser.add_argument("--alpha", type=float, default=ALPHA)
+    parser.add_argument("--k", type=float, default=KAPPA)
+    parser.add_argument("--dt", type=float, default=DT)
+    parser.add_argument("--steps", type=int, default=30)
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--tau", type=float, default=THRESHOLD)
+    args = parser.parse_args()
+
+    payload = simulate_mode(
+        steps=args.steps,
+        governor_enabled=True,
+        tau=args.tau,
+        dt=args.dt,
+        alpha=args.alpha,
+        k=args.k,
+        seed=args.seed,
+    )
+    print(payload)
+
+
+if __name__ == "__main__":
+    cli()
