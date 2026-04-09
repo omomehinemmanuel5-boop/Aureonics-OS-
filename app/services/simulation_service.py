@@ -10,8 +10,12 @@ from app.services.governor_service import THRESHOLD
 ALPHA = 0.4
 KAPPA = 2.0
 DT = 0.05
+# NOTE:
+# Large dt values (for example 1.0) can destabilize replicator dynamics and produce
+# non-physical oscillations or collapse. Use a small dt for accurate simulation.
 SWEEP_ALPHA = [0.2, 0.5, 1.0]
 SWEEP_K = [1.0, 2.0, 5.0, 10.0]
+NORMALIZATION_EPSILON = 1e-12
 
 
 def seed_project(db: Session) -> Project:
@@ -78,6 +82,15 @@ def compute_G(x: list[float], tau: float = THRESHOLD, k: float = KAPPA, governor
     return [k * (phi[i] - phi_bar) for i in range(3)]
 
 
+def apply_safe_normalization(state_vector: list[float], epsilon: float = NORMALIZATION_EPSILON) -> tuple[list[float], bool]:
+    clamped_state = [max(0.0, value) for value in state_vector]
+    total = sum(clamped_state)
+    if total <= epsilon:
+        dim = len(clamped_state)
+        return ([1.0 / dim] * dim), True
+    return ([value / total for value in clamped_state]), False
+
+
 def simulate_mode(
     *,
     steps: int,
@@ -88,6 +101,9 @@ def simulate_mode(
     k: float = KAPPA,
     seed: int | None = None,
 ) -> dict:
+    if dt > 0.2:
+        print("Warning: Large dt may cause unstable dynamics")
+
     rng = random.Random(seed) if seed is not None else random
     x = [0.34, 0.33, 0.33]
     trajectory = []
@@ -96,6 +112,8 @@ def simulate_mode(
     recovery_times: list[int] = []
     violation_start: int | None = None
     collapse_detected = False
+    non_physical_state_count = 0
+    normalization_fallback_count = 0
 
     for t in range(steps):
         z = {
@@ -109,8 +127,12 @@ def simulate_mode(
         dx = [F[i] + G[i] for i in range(3)]
         x = [x[i] + (dt * dx[i]) for i in range(3)]
 
-        total = sum(x)
-        x = [xi / total for xi in x]
+        if all(xi <= 0.0 for xi in x):
+            non_physical_state_count += 1
+        x, used_fallback = apply_safe_normalization(x)
+        if used_fallback:
+            normalization_fallback_count += 1
+            collapse_detected = True
 
         M = min(x)
         is_below = M < tau
@@ -158,6 +180,9 @@ def simulate_mode(
         "max_recovery_time": max(recovery_times) if recovery_times else 0,
         "avg_recovery_time": (sum(recovery_times) / len(recovery_times)) if recovery_times else 0.0,
         "collapse_detected": collapse_detected,
+        "non_physical_state_count": non_physical_state_count,
+        "integration_anomaly_detected": non_physical_state_count > 0,
+        "normalization_fallback_count": normalization_fallback_count,
     }
 
 
