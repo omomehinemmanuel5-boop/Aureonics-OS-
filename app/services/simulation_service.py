@@ -14,8 +14,10 @@ DT = 0.05
 # Large dt values (for example 1.0) can destabilize replicator dynamics and produce
 # non-physical oscillations or collapse. Use a small dt for accurate simulation.
 SWEEP_ALPHA = [0.2, 0.5, 1.0]
-SWEEP_K = [1.0, 2.0, 5.0, 10.0]
+SWEEP_K = [2.0, 5.0, 10.0, 20.0]
 NORMALIZATION_EPSILON = 1e-12
+NEAR_ZERO_EPSILON = 0.01
+NEAR_ZERO_THRESHOLD = 0.02
 
 
 def seed_project(db: Session) -> Project:
@@ -56,12 +58,23 @@ def a_S(z: dict[str, float]) -> float:
     return 0.5 - (0.1 * z["delta"]) + (0.1 * z["uncertainty"])
 
 
-def compute_F(x: list[float], z: dict[str, float], alpha: float = ALPHA) -> list[float]:
+def compute_F(
+    x: list[float],
+    z: dict[str, float],
+    alpha: float = ALPHA,
+    symmetric_mode: bool = False,
+) -> list[float]:
     c, r, s = x
 
-    f_c = a_C(z) - alpha * (r + s)
-    f_r = a_R(z) - alpha * (c + s)
-    f_s = a_S(z) - alpha * (c + r)
+    if symmetric_mode:
+        common_a = 0.5
+        f_c = common_a - alpha * (r + s)
+        f_r = common_a - alpha * (c + s)
+        f_s = common_a - alpha * (c + r)
+    else:
+        f_c = a_C(z) - alpha * (r + s)
+        f_r = a_R(z) - alpha * (c + s)
+        f_s = a_S(z) - alpha * (c + r)
 
     f_bar = (c * f_c) + (r * f_r) + (s * f_s)
 
@@ -100,9 +113,10 @@ def simulate_mode(
     alpha: float = ALPHA,
     k: float = KAPPA,
     seed: int | None = None,
+    symmetry_test: bool = False,
 ) -> dict:
     if dt > 0.2:
-        print("Warning: Large dt may cause unstable dynamics")
+        print("Warning: dt too large, may destabilize replicator dynamics")
 
     rng = random.Random(seed) if seed is not None else random
     x = [0.34, 0.33, 0.33]
@@ -112,17 +126,25 @@ def simulate_mode(
     recovery_times: list[int] = []
     violation_start: int | None = None
     collapse_detected = False
+    near_collapse_count = 0
     non_physical_state_count = 0
     normalization_fallback_count = 0
 
     for t in range(steps):
-        z = {
-            "delta": rng.uniform(-0.5, 0.5),
-            "uncertainty": rng.uniform(0.0, 1.0),
-        }
+        if symmetry_test:
+            z = {"delta": 0.0, "uncertainty": 0.0}
+        else:
+            z = {
+                "delta": rng.uniform(-0.5, 0.5),
+                "uncertainty": rng.uniform(0.0, 1.0),
+            }
 
-        F = compute_F(x, z, alpha=alpha)
+        F = compute_F(x, z, alpha=alpha, symmetric_mode=symmetry_test)
         G = compute_G(x, tau=tau, k=k, governor_enabled=governor_enabled)
+        # Keep near-zero protection symmetric so no pillar gets a built-in advantage.
+        for i in range(3):
+            if x[i] < NEAR_ZERO_THRESHOLD:
+                G[i] += NEAR_ZERO_EPSILON
 
         dx = [F[i] + G[i] for i in range(3)]
         x = [x[i] + (dt * dx[i]) for i in range(3)]
@@ -147,6 +169,8 @@ def simulate_mode(
 
         if M < 0.01:
             collapse_detected = True
+        if M < 0.02:
+            near_collapse_count += 1
 
         trajectory.append(
             {
@@ -161,6 +185,9 @@ def simulate_mode(
     m_values = [step["M"] for step in trajectory]
     min_m = min(m_values) if m_values else 0.0
     avg_m = sum(m_values) / len(m_values) if m_values else 0.0
+    mean_c = sum(step["C"] for step in trajectory) / len(trajectory) if trajectory else 0.0
+    mean_r = sum(step["R"] for step in trajectory) / len(trajectory) if trajectory else 0.0
+    mean_s = sum(step["S"] for step in trajectory) / len(trajectory) if trajectory else 0.0
     if violation_start is not None:
         recovery_times.append(steps - violation_start)
 
@@ -180,6 +207,10 @@ def simulate_mode(
         "max_recovery_time": max(recovery_times) if recovery_times else 0,
         "avg_recovery_time": (sum(recovery_times) / len(recovery_times)) if recovery_times else 0.0,
         "collapse_detected": collapse_detected,
+        "near_collapse_count": near_collapse_count,
+        "mean_C": mean_c,
+        "mean_R": mean_r,
+        "mean_S": mean_s,
         "non_physical_state_count": non_physical_state_count,
         "integration_anomaly_detected": non_physical_state_count > 0,
         "normalization_fallback_count": normalization_fallback_count,
@@ -240,11 +271,30 @@ def run_simulation(
     alpha: float = ALPHA,
     k: float = KAPPA,
     seed: int | None = None,
+    symmetry_test: bool = False,
 ) -> dict:
     seed_project(db)
 
-    no_governor = simulate_mode(steps=steps, governor_enabled=False, tau=tau, dt=dt, alpha=alpha, k=k, seed=seed)
-    with_governor = simulate_mode(steps=steps, governor_enabled=True, tau=tau, dt=dt, alpha=alpha, k=k, seed=seed)
+    no_governor = simulate_mode(
+        steps=steps,
+        governor_enabled=False,
+        tau=tau,
+        dt=dt,
+        alpha=alpha,
+        k=k,
+        seed=seed,
+        symmetry_test=symmetry_test,
+    )
+    with_governor = simulate_mode(
+        steps=steps,
+        governor_enabled=True,
+        tau=tau,
+        dt=dt,
+        alpha=alpha,
+        k=k,
+        seed=seed,
+        symmetry_test=symmetry_test,
+    )
     sweep = parameter_sweep(steps=steps, dt=dt, tau=tau, seed=seed)
 
     today = date.today()
@@ -281,7 +331,11 @@ def cli() -> None:
     parser.add_argument("--steps", type=int, default=30)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--tau", type=float, default=THRESHOLD)
+    parser.add_argument("--symmetry-test", action="store_true")
     args = parser.parse_args()
+
+    if args.dt not in [0.05, 0.02, 0.01]:
+        raise ValueError("dt must be one of: 0.05, 0.02, 0.01")
 
     payload = simulate_mode(
         steps=args.steps,
@@ -291,6 +345,7 @@ def cli() -> None:
         alpha=args.alpha,
         k=args.k,
         seed=args.seed,
+        symmetry_test=args.symmetry_test,
     )
     print(payload)
 
