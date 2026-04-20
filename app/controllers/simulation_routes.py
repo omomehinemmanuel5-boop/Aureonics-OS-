@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.services.simulation_service import run_simulation
+from app.services.simulation_service import export_simulation_payload, run_simulation
 
 router = APIRouter()
 
@@ -14,12 +14,13 @@ def simulate(
     k: float = 4.0,
     dt: float = 0.05,
     seed: int | None = None,
+    export: bool = False,
     db: Session = Depends(get_db),
 ):
     profiles = run_simulation(db, steps=steps, alpha=alpha, k=k, dt=dt, seed=seed)
     governor_metrics = profiles.get("mode_with_governor", {})
 
-    return {
+    response = {
         "steps": steps,
         "alpha": alpha,
         "k": k,
@@ -31,3 +32,6 @@ def simulate(
         "time_below_tau": governor_metrics.get("time_below_tau", 0),
         "profiles": profiles,
     }
+    if export:
+        response["export_path"] = export_simulation_payload(response)
+    return response

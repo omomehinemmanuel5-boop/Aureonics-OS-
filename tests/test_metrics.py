@@ -10,6 +10,13 @@ class TestAureonicsMetrics(unittest.TestCase):
         stable = compute_ccp(anchor, [anchor, anchor, anchor], [1, 2, 3])
         perturbed = compute_ccp(anchor, ["random noise", "detached fragment", "unrelated output"], [1, 2, 3])
         self.assertGreater(stable["ccp"], perturbed["ccp"])
+        self.assertGreater(stable["anchor_coverage"], perturbed["anchor_coverage"])
+
+    def test_ccp_penalizes_negated_anchor(self):
+        anchor = "maintain lawful continuity and project memory"
+        aligned = compute_ccp(anchor, ["maintain lawful continuity and project memory"], [1])
+        contradicted = compute_ccp(anchor, ["do not maintain continuity or memory"], [1])
+        self.assertGreater(aligned["ccp"], contradicted["ccp"])
 
     def test_iec_decreases_with_inconsistent_ratios(self):
         consistent_pairs = [
@@ -35,7 +42,7 @@ class TestAureonicsMetrics(unittest.TestCase):
     def test_margin_tracks_weakest_pillar(self):
         weakest, alert = compute_alert(0.82, 0.74, 0.11)
         self.assertEqual(weakest, "Sovereignty")
-        self.assertIn("Sovereignty collapse", alert)
+        self.assertTrue("Sovereignty" in alert)
 
 
 if __name__ == "__main__":

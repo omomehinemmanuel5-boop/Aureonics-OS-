@@ -72,5 +72,30 @@ class AlertSnapshot(BaseModel):
     alert: str
 
 
+class GovernorCorrection(BaseModel):
+    pillar: str
+    severity: str
+    deficit: float
+    action: str
+    rationale: str
+    expected_shift: str
+    target_mode: str
+
+
+class GovernorSnapshot(BaseModel):
+    active: bool
+    tau: float
+    scores: dict[str, float]
+    stability_margin: float
+    weakest_pillar: str
+    violated_pillars: list[str]
+    deficits: dict[str, float]
+    constitutional_band: str
+    governance_pressure: float
+    target_mode: str
+    corrections: list[GovernorCorrection]
+    alert: str
+
+
 class WeeklyProfileOut(MetricSnapshot, AlertSnapshot):
     generated_at: datetime
