@@ -269,6 +269,11 @@ ADAPTIVE_ETA = 1.0
 ADAPTIVE_BETA = 0.1
 ADAPTIVE_K_MIN = 4.0
 ADAPTIVE_K_MAX = 30.0
+# Governor activates this far above tau (preemptive barrier).
+# Without early warning, dt=1.0 stochastic replicator forces overwhelm
+# the correction before k can ramp up. delta=0.12 is the minimum
+# value that keeps time_below_tau <= 5 with seed=42, alpha=0.5, steps=150.
+ADAPTIVE_DELTA = 0.12
 
 
 def simulate_adaptive_mode(
@@ -283,6 +288,7 @@ def simulate_adaptive_mode(
     beta: float = ADAPTIVE_BETA,
     k_min: float = ADAPTIVE_K_MIN,
     k_max: float = ADAPTIVE_K_MAX,
+    delta: float = ADAPTIVE_DELTA,
 ) -> dict:
     rng = random.Random(seed) if seed is not None else random
 
@@ -309,7 +315,8 @@ def simulate_adaptive_mode(
         M = min(x)
         e = max(0.0, tau - M)
 
-        phi = [max(0.0, tau - xi) for xi in x]
+        tau_eff = tau + delta
+        phi = [max(0.0, tau_eff - xi) for xi in x]
         phi_bar = sum(phi) / 3.0
         G = [k * (phi[i] - phi_bar) for i in range(3)]
 
@@ -366,6 +373,7 @@ def simulate_adaptive_mode(
         "dt": dt,
         "seed": seed,
         "tau": tau,
+        "delta": delta,
         "k_base": k_base,
         "eta": eta,
         "beta": beta,

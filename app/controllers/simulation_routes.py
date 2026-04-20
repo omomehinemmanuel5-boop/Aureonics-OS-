@@ -15,8 +15,9 @@ def simulate_adaptive(
     dt: float = 1.0,
     seed: int = 42,
     tau: float = 0.15,
+    delta: float = 0.12,
 ):
-    result = simulate_adaptive_mode(steps=steps, alpha=alpha, dt=dt, seed=seed, tau=tau)
+    result = simulate_adaptive_mode(steps=steps, alpha=alpha, dt=dt, seed=seed, tau=tau, delta=delta)
     return result
 
 
