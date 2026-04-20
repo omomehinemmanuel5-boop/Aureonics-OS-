@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -8,6 +8,7 @@ from app.models.entities import Project, Task
 from app.models.schemas import (
     AlertSnapshot,
     ContinuityTestRequest,
+    GovernorSnapshot,
     MetricSnapshot,
     ProjectCreate,
     ReciprocityTestRequest,
@@ -19,8 +20,16 @@ from app.models.schemas import (
 )
 from app.services.governor_service import compute_alert
 from app.services.lex_service import enforce_done_task_immutable
-from app.services.metrics_service import compute_adv, compute_ccp, compute_iec, compute_profile
-from app.services.workflow_service import execute_task, ingest_signal, plan_project, route_task
+from app.services.metrics_service import compute_adv, compute_ccp, compute_iec
+from app.services.profile_service import live_constitutional_snapshot, persist_weekly_profile
+from app.services.workflow_service import (
+    apply_corrections,
+    execute_task,
+    ingest_signal,
+    plan_project,
+    queued_corrections,
+    route_task,
+)
 
 router = APIRouter()
 
@@ -46,7 +55,8 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
 @router.post("/task")
 def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
     try:
-        task = route_task(db, payload)
+        snapshot = live_constitutional_snapshot(db)
+        task, routing_meta = route_task(db, payload, governor_snapshot=snapshot)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
@@ -54,6 +64,10 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
         "status": task.status,
         "is_invalid": task.is_invalid,
         "invalid_reason": task.invalid_reason,
+        "mode": task.mode,
+        "priority": task.priority,
+        "has_metric": task.has_metric,
+        **routing_meta,
     }
 
 
@@ -74,28 +88,49 @@ def update_task_status(task_id: str, payload: TaskUpdate, db: Session = Depends(
 
 @router.get("/profile", response_model=MetricSnapshot)
 def get_profile(db: Session = Depends(get_db)):
-    tasks = db.query(Task).all()
-    projects = db.query(Project).all()
-    profile = compute_profile(tasks, projects)
+    snapshot = live_constitutional_snapshot(db)
     return {
-        "continuity_score": profile["continuity_score"],
-        "reciprocity_score": profile["reciprocity_score"],
-        "sovereignty_score": profile["sovereignty_score"],
-        "stability_margin": profile["stability_margin"],
+        "continuity_score": snapshot["continuity_score"],
+        "reciprocity_score": snapshot["reciprocity_score"],
+        "sovereignty_score": snapshot["sovereignty_score"],
+        "stability_margin": snapshot["stability_margin"],
     }
 
 
 @router.get("/alerts", response_model=AlertSnapshot)
 def get_alerts(db: Session = Depends(get_db)):
-    tasks = db.query(Task).all()
-    projects = db.query(Project).all()
-    profile = compute_profile(tasks, projects)
-    weakest, alert = compute_alert(
-        profile["continuity_score"],
-        profile["reciprocity_score"],
-        profile["sovereignty_score"],
-    )
-    return {"weakest_pillar": weakest, "alert": alert}
+    snapshot = live_constitutional_snapshot(db)
+    return {"weakest_pillar": snapshot["weakest_pillar"], "alert": snapshot["alert"]}
+
+
+@router.get("/governor", response_model=GovernorSnapshot)
+def get_governor(db: Session = Depends(get_db)):
+    snapshot = live_constitutional_snapshot(db)
+    return {
+        "active": snapshot["active"],
+        "tau": snapshot["tau"],
+        "scores": snapshot["scores"],
+        "stability_margin": snapshot["stability_margin"],
+        "weakest_pillar": snapshot["weakest_pillar"],
+        "violated_pillars": snapshot["violated_pillars"],
+        "deficits": snapshot["deficits"],
+        "constitutional_band": snapshot["constitutional_band"],
+        "governance_pressure": snapshot["governance_pressure"],
+        "target_mode": snapshot["target_mode"],
+        "corrections": snapshot["corrections"],
+        "alert": snapshot["alert"],
+    }
+
+
+@router.get("/governor/policy")
+def get_governor_policy(db: Session = Depends(get_db)):
+    snapshot = live_constitutional_snapshot(db)
+    return {
+        "constitutional_band": snapshot["constitutional_band"],
+        "governance_pressure": snapshot["governance_pressure"],
+        "target_mode": snapshot["target_mode"],
+        "policy": snapshot["policy"],
+    }
 
 
 @router.get("/tasks/invalid")
@@ -112,6 +147,23 @@ def get_invalid_tasks(db: Session = Depends(get_db)):
         }
         for t in invalid_tasks
     ]
+
+
+@router.get("/corrections/queue")
+def get_correction_queue(db: Session = Depends(get_db)):
+    return {"items": queued_corrections(db)}
+
+
+@router.post("/corrections/apply")
+def apply_correction_queue(limit: int = 5, db: Session = Depends(get_db)):
+    snapshot = live_constitutional_snapshot(db)
+    created = apply_corrections(db, snapshot, limit=limit)
+    return {
+        "applied": len(created),
+        "target_mode": snapshot["target_mode"],
+        "constitutional_band": snapshot["constitutional_band"],
+        "created_tasks": created,
+    }
 
 
 @router.post("/test/continuity")
@@ -149,20 +201,14 @@ def panel_exploratory(db: Session = Depends(get_db)):
 
 @router.get("/weekly-profile", response_model=WeeklyProfileOut)
 def weekly_profile(db: Session = Depends(get_db)):
-    tasks = db.query(Task).all()
-    projects = db.query(Project).all()
-    profile = compute_profile(tasks, projects)
-    weakest, alert = compute_alert(
-        profile["continuity_score"],
-        profile["reciprocity_score"],
-        profile["sovereignty_score"],
-    )
+    snapshot = live_constitutional_snapshot(db)
+    persist_weekly_profile(db, snapshot)
     return {
-        "continuity_score": profile["continuity_score"],
-        "reciprocity_score": profile["reciprocity_score"],
-        "sovereignty_score": profile["sovereignty_score"],
-        "stability_margin": profile["stability_margin"],
-        "weakest_pillar": weakest,
-        "alert": alert,
-        "generated_at": datetime.utcnow(),
+        "continuity_score": snapshot["continuity_score"],
+        "reciprocity_score": snapshot["reciprocity_score"],
+        "sovereignty_score": snapshot["sovereignty_score"],
+        "stability_margin": snapshot["stability_margin"],
+        "weakest_pillar": snapshot["weakest_pillar"],
+        "alert": snapshot["alert"],
+        "generated_at": datetime.now(timezone.utc),
     }

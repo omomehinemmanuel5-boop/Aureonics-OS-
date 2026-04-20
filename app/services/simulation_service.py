@@ -1,6 +1,8 @@
+import json
 import random
 from argparse import ArgumentParser
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -119,7 +121,7 @@ def simulate_mode(
         print("Warning: dt too large, may destabilize replicator dynamics")
 
     rng = random.Random(seed) if seed is not None else random
-    x = [0.34, 0.33, 0.33]
+    x = [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0] if symmetry_test else [0.34, 0.33, 0.33]
     trajectory = []
     violations = 0
     time_below_tau = 0
@@ -262,6 +264,12 @@ def parameter_sweep(*, steps: int, dt: float, tau: float, seed: int | None = Non
     return sweep_results
 
 
+def export_simulation_payload(payload: dict, output_path: str = "simulation_latest.json") -> str:
+    path = Path(output_path)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return str(path)
+
+
 def run_simulation(
     db: Session,
     *,
@@ -301,7 +309,7 @@ def run_simulation(
     for step in with_governor["trajectory"]:
         week_start = today - timedelta(days=today.weekday()) + timedelta(days=step["t"] * 7)
         weekly = WeeklyProfile(
-            id=f"weekly-{step['t']}-{int(datetime.utcnow().timestamp())}",
+            id=f"weekly-{step['t']}-{int(datetime.now(timezone.utc).timestamp())}",
             week_start=week_start,
             continuity_score=round(step["C"], 4),
             reciprocity_score=round(step["R"], 4),

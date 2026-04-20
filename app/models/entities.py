@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -11,7 +11,7 @@ class Signal(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     processed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
@@ -24,7 +24,7 @@ class Project(Base):
     steps: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     risks: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     success_criteria: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
 class Task(Base):
@@ -46,7 +46,7 @@ class Task(Base):
     invalid_reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
     correction_queue: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     completed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
 
 
@@ -56,7 +56,7 @@ class Metric(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     task_id: Mapped[str] = mapped_column(String, ForeignKey("tasks.id"), nullable=False)
     value: Mapped[float] = mapped_column(Float, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
 class WeeklyProfile(Base):
@@ -80,4 +80,4 @@ class CorrectionQueue(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     task_id: Mapped[str] = mapped_column(String, ForeignKey("tasks.id"), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
