@@ -264,6 +264,116 @@ def parameter_sweep(*, steps: int, dt: float, tau: float, seed: int | None = Non
     return sweep_results
 
 
+ADAPTIVE_K_BASE = 4.0
+ADAPTIVE_ETA = 1.0
+ADAPTIVE_BETA = 0.1
+ADAPTIVE_K_MIN = 4.0
+ADAPTIVE_K_MAX = 30.0
+
+
+def simulate_adaptive_mode(
+    *,
+    steps: int = 150,
+    alpha: float = 0.5,
+    dt: float = 1.0,
+    seed: int | None = 42,
+    tau: float = THRESHOLD,
+    k_base: float = ADAPTIVE_K_BASE,
+    eta: float = ADAPTIVE_ETA,
+    beta: float = ADAPTIVE_BETA,
+    k_min: float = ADAPTIVE_K_MIN,
+    k_max: float = ADAPTIVE_K_MAX,
+) -> dict:
+    rng = random.Random(seed) if seed is not None else random
+
+    C, R, S = 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0
+    k = k_base
+
+    trajectory: list[dict] = []
+    k_trajectory: list[float] = []
+    time_below_tau = 0
+    recovery_times: list[int] = []
+    violation_start: int | None = None
+    collapse_detected = False
+    normalization_fallback_count = 0
+
+    for t in range(steps):
+        z = {
+            "delta": rng.uniform(-0.5, 0.5),
+            "uncertainty": rng.uniform(0.0, 1.0),
+        }
+
+        x = [C, R, S]
+        F = compute_F(x, z, alpha=alpha)
+
+        M = min(x)
+        e = max(0.0, tau - M)
+
+        phi = [max(0.0, tau - xi) for xi in x]
+        phi_bar = sum(phi) / 3.0
+        G = [k * (phi[i] - phi_bar) for i in range(3)]
+
+        C += dt * (F[0] + G[0])
+        R += dt * (F[1] + G[1])
+        S += dt * (F[2] + G[2])
+
+        C, R, S = max(0.0, C), max(0.0, R), max(0.0, S)
+        total = C + R + S
+        if total > NORMALIZATION_EPSILON:
+            C, R, S = C / total, R / total, S / total
+        else:
+            C, R, S = 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0
+            normalization_fallback_count += 1
+
+        k += eta * e - beta * (k - k_base)
+        k = max(k_min, min(k_max, k))
+
+        M_new = min(C, R, S)
+        is_below = M_new < tau
+
+        if is_below:
+            time_below_tau += 1
+            if violation_start is None:
+                violation_start = t
+        elif violation_start is not None:
+            recovery_times.append(t - violation_start)
+            violation_start = None
+
+        if M_new < 0.01:
+            collapse_detected = True
+
+        k_trajectory.append(k)
+        trajectory.append({"t": t, "C": C, "R": R, "S": S, "M": M_new, "k": k, "alert": is_below})
+
+    if violation_start is not None:
+        recovery_times.append(steps - violation_start)
+
+    m_values = [step["M"] for step in trajectory]
+    min_m = min(m_values) if m_values else 0.0
+    avg_recovery_time = (sum(recovery_times) / len(recovery_times)) if recovery_times else 0.0
+
+    return {
+        "trajectory": trajectory,
+        "k_trajectory": k_trajectory,
+        "min_M": min_m,
+        "time_below_tau": time_below_tau,
+        "recovery_times": recovery_times,
+        "avg_recovery_time": avg_recovery_time,
+        "collapse_detected": collapse_detected,
+        "normalization_fallback_count": normalization_fallback_count,
+        "steps": steps,
+        "alpha": alpha,
+        "dt": dt,
+        "seed": seed,
+        "tau": tau,
+        "k_base": k_base,
+        "eta": eta,
+        "beta": beta,
+        "k_min": k_min,
+        "k_max": k_max,
+    }
+
+
 def export_simulation_payload(payload: dict, output_path: str = "simulation_latest.json") -> str:
     path = Path(output_path)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

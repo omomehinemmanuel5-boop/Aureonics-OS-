@@ -1,0 +1,112 @@
+Aureonics Adaptive Governor – Final Implementation Specification
+
+1. Core System Goal
+
+A self‑correcting, stable, adaptive intelligence system that maintains constitutional health (C,R,S) on the simplex C+R+S=1, with stability margin M = \min(C,R,S) never falling below a safety threshold \tau for extended periods, and recovering within a few steps when violations occur.
+
+2. State and Parameters
+
+· State: x = (C, R, S), with C,R,S \ge 0 and C+R+S = 1.
+· Threshold: \tau = 0.15 (constitutional safety boundary).
+· Time step: dt = 1.0 (weeks, or any discrete unit).
+· Intrinsic dynamics: Replicator form (as in your paper Section 11).
+  For simplicity in this implementation, use a pre‑defined stochastic perturbation model (the one already in your simulation) – the exact F(x,z) is not changed.
+
+3. Adaptive Governor (Mass‑Conserving)
+
+The governor corrects the state only when a pillar violates the threshold.
+
+Error signal:
+
+e_t = \max(0,\ \tau - M_t) \quad\text{where}\quad M_t = \min(C_t, R_t, S_t)
+
+Adaptive gain k_t:
+
+· Start with k_0 = 4.
+· Update each step:
+  k_{t+1} = \text{clip}\big( k_t + \eta \cdot e_t - \beta \cdot (k_t - k_{\text{base}}),\ k_{\min},\ k_{\max} \big)
+· Parameters:
+  · \eta = 0.5 (how fast gain increases on violation)
+  · \beta = 0.1 (decay rate toward base)
+  · k_{\text{base}} = 4
+  · k_{\min} = 4
+  · k_{\max} = 20
+
+Governor correction (mass‑conserving, from Section 11):
+
+\phi_i = \max(0,\ \tau - x_i), \quad \bar\phi = \frac{1}{3}\sum_{j=1}^3 \phi_j, \quad G_i = k_t \cdot (\phi_i - \bar\phi)
+
+
+Then update the state:
+
+x \leftarrow x + dt \cdot \big( F(x,z) + G \big)
+
+
+Followed by renormalisation to the simplex (clamp negatives to 0, then divide by sum).
+
+4. Simulation Loop (Pseudo‑code)
+
+```python
+def simulate(steps=150, alpha=0.5, dt=1.0, seed=42, tau=0.15):
+    set random seed
+    initialise C,R,S = 1/3 each
+    k = 4.0
+    history = []   # stores C,R,S,M,k, alert flag
+    for t in range(steps):
+        # 1. Intrinsic dynamics F(x,z) – your existing replicator code
+        F = compute_intrinsic(C,R,S, alpha)   # includes random perturbations
+        # 2. Compute M and error
+        M = min(C,R,S)
+        e = max(0, tau - M)
+        # 3. Governor correction
+        phi = [max(0, tau - xi) for xi in (C,R,S)]
+        phi_bar = sum(phi)/3.0
+        G = [k * (p - phi_bar) for p in phi]
+        # 4. Euler step
+        C += dt * (F[0] + G[0])
+        R += dt * (F[1] + G[1])
+        S += dt * (F[2] + G[2])
+        # 5. Renormalise (clamp negatives, then divide by sum)
+        C,R,S = max(0,C), max(0,R), max(0,S)
+        total = C+R+S
+        if total > 1e-12:
+            C,R,S = C/total, R/total, S/total
+        else:
+            C,R,S = 1/3, 1/3, 1/3   # fallback
+        # 6. Update adaptive gain
+        k += eta * e - beta * (k - k_base)
+        k = clip(k, k_min, k_max)
+        # 7. Store data
+        history.append((t, C, R, S, M, k, e>0))
+    return history
+```
+
+5. Metrics to Output
+
+For each simulation run, return:
+
+· min_M – lowest value of M over all steps.
+· time_below_tau – total number of steps where M < \tau.
+· recovery_times – list of steps taken to return above \tau after each violation.
+· avg_recovery_time – mean of recovery_times.
+· k_trajectory – list of k_t over time.
+· collapse_detected – True if any M < 0.01.
+
+6. Expected Behaviour
+
+· Without governor: M collapses quickly to near 0.
+· With adaptive governor: M rarely drops below \tau, and when it does, recovery occurs within ≤ 3 steps.
+· The gain k_t increases during violations and decays back to 4 when safe.
+
+7. Integration into Existing FastAPI Service
+
+· Add a new endpoint /simulate_adaptive that accepts query parameters: steps, alpha, dt, seed, tau.
+· Return JSON containing the metrics and the full trajectory (optional, for debugging).
+· Keep the original /simulate endpoint unchanged (backward compatibility).
+
+8. Why This Is the “Final Version”
+
+· Simple: only 3 extra parameters (eta, beta, k_max), all with clear defaults.
+· Effective: adaptive gain eliminates long‑term violations without over‑shooting.
+· Faithful to theory: uses mass‑conserving governor from Section 11.
+· Self‑correcting: the system automatically strengthens its response when needed and relaxes when safe.

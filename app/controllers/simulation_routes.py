@@ -2,9 +2,22 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.services.simulation_service import export_simulation_payload, run_simulation
+from app.services.simulation_service import export_simulation_payload, run_simulation, simulate_adaptive_mode
 
 router = APIRouter()
+
+
+@router.get("/simulate_adaptive")
+@router.post("/simulate_adaptive")
+def simulate_adaptive(
+    steps: int = 150,
+    alpha: float = 0.5,
+    dt: float = 1.0,
+    seed: int = 42,
+    tau: float = 0.15,
+):
+    result = simulate_adaptive_mode(steps=steps, alpha=alpha, dt=dt, seed=seed, tau=tau)
+    return result
 
 
 @router.post("/simulate")
