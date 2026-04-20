@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aureonics CBF Governor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #1c2230;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --red: #f85149;
+      --yellow: #d29922;
+      --purple: #bc8cff;
+      --pillar-c: #58a6ff;
+      --pillar-r: #3fb950;
+      --pillar-s: #d29922;
+      --theta: #bc8cff;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .logo {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 16px; color: #fff;
+    }
+    .header h1 { font-size: 16px; font-weight: 600; }
+    .header p { font-size: 12px; color: var(--muted); }
+
+    .safety-badge {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid;
+      transition: all 0.3s;
+    }
+    .safety-badge.safe { background: rgba(63,185,80,.12); border-color: var(--green); color: var(--green); }
+    .safety-badge.violated { background: rgba(248,81,73,.12); border-color: var(--red); color: var(--red); }
+    .safety-badge.idle { background: rgba(139,148,158,.08); border-color: var(--border); color: var(--muted); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+
+    /* ── Layout ── */
+    .layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 0;
+      min-height: calc(100vh - 56px);
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+    .field label { font-size: 12px; color: var(--muted); }
+    .field input[type="number"], .field input[type="range"] {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 7px 10px;
+      font-size: 13px;
+      width: 100%;
+      outline: none;
+    }
+    .field input[type="range"] { padding: 4px 0; cursor: pointer; }
+    .field input:focus { border-color: var(--accent); }
+    .field .value-display { font-size: 13px; font-weight: 600; color: var(--accent); text-align: right; }
+
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 12px;
+      background: var(--surface2);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .toggle-label { font-size: 13px; }
+    .toggle {
+      position: relative; width: 40px; height: 22px;
+      background: var(--border); border-radius: 11px; cursor: pointer;
+      transition: background .2s;
+    }
+    .toggle.on { background: var(--green); }
+    .toggle::after {
+      content: ''; position: absolute;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #fff; top: 3px; left: 3px; transition: transform .2s;
+    }
+    .toggle.on::after { transform: translateX(18px); }
+
+    .btn {
+      padding: 10px 16px; border-radius: 8px; border: none;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      width: 100%; transition: all .15s;
+    }
+    .btn-primary { background: var(--accent); color: #0d1117; }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-primary:active { transform: scale(.98); }
+    .btn-secondary {
+      background: var(--surface2); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+    .btn-row { display: flex; gap: 8px; flex-direction: column; }
+
+    /* ── Main ── */
+    .main { padding: 24px; overflow-y: auto; }
+
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .stat-card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    .stat-card .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+    .stat-card .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .val-green { color: var(--green); }
+    .val-red { color: var(--red); }
+    .val-yellow { color: var(--yellow); }
+    .val-blue { color: var(--accent); }
+    .val-purple { color: var(--purple); }
+
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto;
+      gap: 16px;
+    }
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .chart-card.wide { grid-column: 1 / -1; }
+    .chart-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .chart-sub { font-size: 11px; color: var(--muted); margin-bottom: 16px; }
+    .chart-wrap { position: relative; }
+
+    /* ── Multi-seed table ── */
+    .seed-section { margin-top: 24px; }
+    .seed-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .seed-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+    }
+    .seed-card .seed-num { font-size: 11px; color: var(--muted); }
+    .seed-card .seed-min { font-size: 20px; font-weight: 700; margin: 4px 0; }
+    .seed-card .seed-status { font-size: 11px; font-weight: 600; }
+    .seed-card.ok { border-color: rgba(63,185,80,.3); }
+    .seed-card.fail { border-color: rgba(248,81,73,.3); }
+
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 200px; color: var(--muted); gap: 8px;
+    }
+    .empty-state svg { opacity: .3; }
+
+    .spinner {
+      display: inline-block; width: 16px; height: 16px;
+      border: 2px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .safety-line-note {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--red); margin-top: 8px;
+    }
+    .safety-line-note::before {
+      content: ''; display: inline-block; width: 16px; height: 2px;
+      background: var(--red); border-top: 2px dashed var(--red);
+    }
+
+    .legend-row {
+      display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+    .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+    .separator { height: 1px; background: var(--border); margin: 4px 0; }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+  <div class="header-left">
+    <div class="logo">A</div>
+    <div>
+      <h1>Aureonics CBF Governor</h1>
+      <p>Control Barrier Function · Adaptive Safety Guarantee</p>
+    </div>
+  </div>
+  <div id="safetyBadge" class="safety-badge idle">
+    <div class="dot"></div>
+    <span id="safetyText">Ready</span>
+  </div>
+</header>
+
+<!-- Main layout -->
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div>
+      <div class="section-title">Simulation Parameters</div>
+
+      <div class="field">
+        <label>Seed</label>
+        <input type="number" id="seed" value="42" min="0" max="9999" />
+      </div>
+
+      <div class="field">
+        <label>Steps <span class="value-display" id="stepsVal">150</span></label>
+        <input type="range" id="steps" min="50" max="300" value="150"
+               oninput="document.getElementById('stepsVal').textContent=this.value" />
+      </div>
+
+      <div class="field">
+        <label>Alpha (competition) <span class="value-display" id="alphaVal">0.50</span></label>
+        <input type="range" id="alpha" min="0.1" max="1.0" step="0.05" value="0.5"
+               oninput="document.getElementById('alphaVal').textContent=parseFloat(this.value).toFixed(2)" />
+      </div>
+
+      <div class="field">
+        <label>Time step dt <span class="value-display" id="dtVal">1.0</span></label>
+        <input type="range" id="dt" min="0.1" max="2.0" step="0.1" value="1.0"
+               oninput="document.getElementById('dtVal').textContent=parseFloat(this.value).toFixed(1)" />
+      </div>
+
+      <div class="toggle-row" style="margin-bottom:14px">
+        <span class="toggle-label">CBF Safety Layer</span>
+        <div class="toggle on" id="cbfToggle" onclick="toggleCBF()"></div>
+      </div>
+    </div>
+
+    <div class="separator"></div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="runSimulation()">
+        ▶ Run Simulation
+      </button>
+      <button class="btn btn-secondary" onclick="runMultiSeed()">
+        ⊞ Test All Seeds
+      </button>
+    </div>
+
+    <div class="separator"></div>
+
+    <div>
+      <div class="section-title">CBF Parameters</div>
+      <div style="font-size:12px; color:var(--muted); line-height:1.8;">
+        <div>τ_cbf = <strong style="color:var(--text)">0.05</strong></div>
+        <div>γ = <strong style="color:var(--text)">5.0</strong></div>
+        <div>θ₀ = <strong style="color:var(--text)">1.0</strong></div>
+        <div>θ ∈ [<strong style="color:var(--text)">0.1, 5.0</strong>]</div>
+        <div>α_θ = <strong style="color:var(--text)">0.8</strong></div>
+        <div>β_θ = <strong style="color:var(--text)">0.05</strong></div>
+        <div>noise σ = <strong style="color:var(--text)">0.08</strong> (clipped 0.15)</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="main">
+
+    <!-- Stats row -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="label">Minimum M (all time)</div>
+        <div class="value" id="statMinM" style="color:var(--muted)">—</div>
+        <div class="sub">min(C,R,S) · safety floor 0.05</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Safety Violations</div>
+        <div class="value" id="statViolations" style="color:var(--muted)">—</div>
+        <div class="sub">steps below τ_cbf = 0.05</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Avg Recovery Time</div>
+        <div class="value" id="statRecovery" style="color:var(--muted)">—</div>
+        <div class="sub">steps to exit violation</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Final θ</div>
+        <div class="value" id="statTheta" style="color:var(--muted)">—</div>
+        <div class="sub">adaptive gain at end</div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-grid">
+
+      <!-- Pillar chart (wide) -->
+      <div class="chart-card wide">
+        <div class="chart-title">Pillar Values — Constitutional Health</div>
+        <div class="chart-sub">Continuity (C), Reciprocity (R), Sovereignty (S) on the simplex · dashed red = safety floor τ = 0.05</div>
+        <div class="chart-wrap">
+          <canvas id="pillarChart" height="90"></canvas>
+        </div>
+        <div class="legend-row" style="margin-top:12px">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--pillar-c)"></div>Continuity</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--pillar-r)"></div>Reciprocity</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--pillar-s)"></div>Sovereignty</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--red);"></div>Safety floor (0.05)</div>
+        </div>
+      </div>
+
+      <!-- Theta chart -->
+      <div class="chart-card">
+        <div class="chart-title">Adaptive Gain θ(t)</div>
+        <div class="chart-sub">Scales correction force · increases when M approaches floor</div>
+        <div class="chart-wrap">
+          <canvas id="thetaChart" height="120"></canvas>
+        </div>
+      </div>
+
+      <!-- Min M chart -->
+      <div class="chart-card">
+        <div class="chart-title">Stability Margin M(t) = min(C, R, S)</div>
+        <div class="chart-sub">CBF guarantees M ≥ 0.05 always · dashed red = hard safety boundary</div>
+        <div class="chart-wrap">
+          <canvas id="marginChart" height="120"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Multi-seed results -->
+    <div class="seed-section" id="seedSection" style="display:none">
+      <div class="section-title" style="margin-bottom:8px">Multi-Seed Safety Test</div>
+      <div id="seedSummary" style="font-size:13px; margin-bottom:12px;"></div>
+      <div class="seed-grid" id="seedGrid"></div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  let charts = {};
+  let cbfOn = true;
+
+  function toggleCBF() {
+    cbfOn = !cbfOn;
+    const el = document.getElementById('cbfToggle');
+    el.classList.toggle('on', cbfOn);
+  }
+
+  const COLORS = {
+    C: '#58a6ff', R: '#3fb950', S: '#d29922',
+    theta: '#bc8cff', M: '#58a6ff', safety: '#f85149'
+  };
+
+  function makeChart(id, datasets, yLabel, minY, maxY, safety = true) {
+    const ctx = document.getElementById(id).getContext('2d');
+    if (charts[id]) charts[id].destroy();
+
+    const allData = datasets.flatMap(d => d.data);
+    const computedMin = minY !== undefined ? minY : Math.min(...allData) - 0.02;
+    const computedMax = maxY !== undefined ? maxY : Math.max(...allData) + 0.02;
+
+    charts[id] = new Chart(ctx, {
+      type: 'line',
+      data: {
+        datasets: datasets.map(d => ({
+          ...d,
+          pointRadius: 0,
+          borderWidth: d.borderWidth || 1.8,
+          tension: 0.3,
+        }))
+      },
+      options: {
+        responsive: true,
+        animation: { duration: 400 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1c2230',
+            borderColor: '#30363d',
+            borderWidth: 1,
+            titleColor: '#e6edf3',
+            bodyColor: '#8b949e',
+            callbacks: {
+              label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(4)}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            type: 'linear',
+            title: { display: true, text: 'Step (t)', color: '#8b949e', font: { size: 11 } },
+            grid: { color: 'rgba(48,54,61,.5)' },
+            ticks: { color: '#8b949e', font: { size: 11 } },
+          },
+          y: {
+            title: { display: true, text: yLabel, color: '#8b949e', font: { size: 11 } },
+            grid: { color: 'rgba(48,54,61,.5)' },
+            ticks: { color: '#8b949e', font: { size: 11 } },
+            min: computedMin,
+            max: computedMax,
+          }
+        }
+      }
+    });
+
+    if (safety) {
+      const safetyPlugin = {
+        id: 'safetyLine',
+        afterDraw(chart) {
+          const { ctx, scales: { y, x } } = chart;
+          const yPx = y.getPixelForValue(0.05);
+          ctx.save();
+          ctx.strokeStyle = COLORS.safety;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([6, 4]);
+          ctx.beginPath();
+          ctx.moveTo(x.left, yPx);
+          ctx.lineTo(x.right, yPx);
+          ctx.stroke();
+          ctx.restore();
+        }
+      };
+      charts[id].config.plugins.push(safetyPlugin);
+      charts[id].update();
+    }
+
+    return charts[id];
+  }
+
+  function toXY(arr) {
+    return arr.map((v, i) => ({ x: i, y: v }));
+  }
+
+  function setStat(id, val, cls) {
+    const el = document.getElementById(id);
+    el.textContent = val;
+    el.className = 'value ' + (cls || '');
+  }
+
+  function setBadge(state) {
+    const badge = document.getElementById('safetyBadge');
+    const text = document.getElementById('safetyText');
+    badge.className = 'safety-badge ' + state;
+    if (state === 'safe') text.textContent = 'Safety Guaranteed';
+    else if (state === 'violated') text.textContent = 'Safety Violated';
+    else text.textContent = 'Ready';
+  }
+
+  async function runSimulation() {
+    const seed = document.getElementById('seed').value;
+    const steps = document.getElementById('steps').value;
+    const alpha = document.getElementById('alpha').value;
+    const dt = document.getElementById('dt').value;
+
+    setBadge('idle');
+    document.getElementById('statMinM').textContent = '…';
+
+    const url = `/cbf/simulate?seed=${seed}&steps=${steps}&alpha=${alpha}&dt=${dt}&cbf_enabled=${cbfOn}`;
+    let data;
+    try {
+      const res = await fetch(url);
+      data = await res.json();
+    } catch (e) {
+      alert('Request failed: ' + e);
+      return;
+    }
+
+    const traj = data.trajectory;
+    const Ct = toXY(traj.map(d => d.C));
+    const Rt = toXY(traj.map(d => d.R));
+    const St = toXY(traj.map(d => d.S));
+    const Mt = toXY(traj.map(d => d.M));
+    const Tt = toXY(data.theta_trajectory);
+
+    makeChart('pillarChart', [
+      { label: 'Continuity (C)', data: Ct, borderColor: COLORS.C },
+      { label: 'Reciprocity (R)', data: Rt, borderColor: COLORS.R },
+      { label: 'Sovereignty (S)', data: St, borderColor: COLORS.S },
+    ], 'Pillar value', 0, 1.02);
+
+    makeChart('thetaChart', [
+      { label: 'θ(t)', data: Tt, borderColor: COLORS.theta },
+    ], 'θ', undefined, undefined, false);
+
+    makeChart('marginChart', [
+      { label: 'M(t) = min(C,R,S)', data: Mt, borderColor: COLORS.M, borderWidth: 2 },
+    ], 'Stability margin M', 0, 1.02);
+
+    const minM = data.min_M;
+    const safe = !data.safety_violated;
+    setStat('statMinM', minM.toFixed(4), safe ? 'val-green' : 'val-red');
+    setStat('statViolations', data.time_below_safe, data.time_below_safe === 0 ? 'val-green' : 'val-red');
+    setStat('statRecovery', data.time_below_safe === 0 ? '—' : data.avg_recovery_time.toFixed(2), 'val-blue');
+    const finalTheta = data.theta_trajectory[data.theta_trajectory.length - 1];
+    setStat('statTheta', finalTheta.toFixed(3), 'val-purple');
+    setBadge(safe ? 'safe' : 'violated');
+  }
+
+  async function runMultiSeed() {
+    const steps = document.getElementById('steps').value;
+    const alpha = document.getElementById('alpha').value;
+    const dt = document.getElementById('dt').value;
+
+    document.getElementById('seedSection').style.display = 'block';
+    document.getElementById('seedGrid').innerHTML = '<div style="color:var(--muted);font-size:13px;display:flex;align-items:center;gap:8px"><div class="spinner"></div>Running 8 seeds…</div>';
+    document.getElementById('seedSummary').textContent = '';
+
+    let data;
+    try {
+      const res = await fetch(`/cbf/multi_seed?steps=${steps}&alpha=${alpha}&dt=${dt}`);
+      data = await res.json();
+    } catch (e) {
+      alert('Request failed: ' + e);
+      return;
+    }
+
+    const grid = document.getElementById('seedGrid');
+    grid.innerHTML = '';
+    for (const r of data.results) {
+      const ok = !r.safety_violated;
+      const card = document.createElement('div');
+      card.className = 'seed-card ' + (ok ? 'ok' : 'fail');
+      card.innerHTML = `
+        <div class="seed-num">seed = ${r.seed}</div>
+        <div class="seed-min" style="color:${ok ? 'var(--green)' : 'var(--red)'}">${r.min_M.toFixed(4)}</div>
+        <div class="seed-status" style="color:${ok ? 'var(--green)' : 'var(--red)'}">${ok ? '✓ SAFE' : '✗ VIOLATED'}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px">${r.time_below_safe} violations</div>
+      `;
+      grid.appendChild(card);
+    }
+
+    const allSafe = data.all_seeds_safe;
+    document.getElementById('seedSummary').innerHTML = allSafe
+      ? `<span style="color:var(--green);font-weight:600">✓ All 8 seeds passed — safety guarantee holds universally</span>`
+      : `<span style="color:var(--red);font-weight:600">✗ Some seeds violated the safety floor — check parameters</span>`;
+  }
+
+  // Auto-run on load
+  window.addEventListener('load', () => runSimulation());
+</script>
+</body>
+</html>

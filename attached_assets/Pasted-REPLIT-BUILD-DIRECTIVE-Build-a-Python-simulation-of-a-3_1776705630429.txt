@@ -1,0 +1,182 @@
+REPLIT BUILD DIRECTIVE
+
+Build a Python simulation of a 3-pillar simplex system with a Control Barrier Function (CBF)-constrained adaptive governor that guarantees no pillar falls below 0.05 under stochastic forcing.
+
+⸻
+
+🔧 Core Requirements
+
+1. State Representation
+
+* Use:
+
+x = [x1, x2, x3]
+
+* Constraints:
+
+sum(x) = 1
+x_i ≥ 0
+
+⸻
+
+2. Dynamics Layer
+
+Replicator + Noise:
+
+f(x) = replicator(x) + stochastic_noise
+
+* Replicator should conserve mass
+* Noise should be bounded (e.g. Gaussian with clipping)
+
+⸻
+
+3. Adaptive Governor
+
+Compute:
+
+u_des = θ * G(x)
+
+Where:
+
+* G(x) = your mass-conserving governor
+* θ updated via adaptive law
+
+⸻
+
+4. 🔐 CBF Safety Layer (MANDATORY)
+
+For each pillar:
+
+h_i = x_i - 0.05
+
+Enforce:
+
+u_safe_i = max(
+    u_des_i,
+    -f_i(x) - γ * (x_i - 0.05)
+)
+
+Use:
+
+γ = 5.0
+
+⸻
+
+5. Mass Conservation Fix
+
+After CBF:
+
+u_safe = u_safe - mean(u_safe)
+
+⸻
+
+6. State Update
+
+x_next = x + dt * (f(x) + u_safe)
+
+Then:
+
+* Clip small negatives
+* Renormalize to sum = 1
+
+⸻
+
+7. Adaptive θ Update
+
+Use:
+
+* error = (0.33 - stability_margin)
+* deadzone = 0.01
+
+θ ← θ + α(e)*e - β(θ - θ₀)
+
+With:
+
+θ_min = 0.1
+θ_max = 5.0
+
+⸻
+
+8. Simulation Setup
+
+* dt = 1.0
+* Run 100–200 steps
+* Inject strong stochastic disturbances
+
+⸻
+
+9. Output (CRITICAL)
+
+Plot:
+
+1. All pillar values over time
+2. θ(t)
+3. Minimum(x_i) over time
+
+⸻
+
+✅ Success Criteria (Non-Negotiable)
+
+The system is ONLY considered correct if:
+
+1. Safety Guarantee
+
+min(x_i) ≥ 0.05 for ALL time steps
+
+⸻
+
+2. Recovery Behavior
+
+* When a pillar approaches 0.05:
+    → system pushes it back up within ≤ 5 steps
+
+⸻
+
+3. No Manual Tuning Required
+
+* Works under multiple random seeds
+
+⸻
+
+🚫 Explicit Constraints (Tell Replit This)
+
+* Do NOT use heuristic fixes
+* Do NOT manually rebalance pillars
+* Do NOT add “if collapse then fix” logic
+
+ONLY:
+
+* dynamics
+* adaptive control
+* CBF constraint
+
+⸻
+
+
+This instruction ensures:
+
+* They can’t cheat with heuristics
+* They must implement real control theory
+* The system becomes provably safe, not empirically lucky
+
+⸻
+
+⚠️ One Last Reality Check
+
+If Replit builds exactly this:
+
+* You will not need to tune k anymore
+* You will not see collapse again
+* You will exit the optimization loop
+
+⸻
+
+🚀 If You Want a Slight Upgrade (Optional Line)
+
+Add this at the end:
+
+Structure the CBF as a reusable module so it can later be upgraded to a Quadratic Program (QP-based controller).
+
+My Primary Goal
+
+Guarantee that the system remains inside a safe, non-collapse region under all admissible dynamics and inputs.
