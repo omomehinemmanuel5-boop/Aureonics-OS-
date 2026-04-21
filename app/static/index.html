@@ -20,9 +20,7 @@
       --red: #f85149;
       --yellow: #d29922;
       --purple: #bc8cff;
-      --pillar-c: #58a6ff;
-      --pillar-r: #3fb950;
-      --pillar-s: #d29922;
+      --sidebar-w: 292px;
     }
 
     body {
@@ -32,65 +30,89 @@
       font-size: 14px;
       line-height: 1.5;
       min-height: 100vh;
+      overflow-x: hidden;
     }
 
-    /* ── Header ── */
+    /* ════════════════════════ HEADER ════════════════════════ */
     .header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 0 24px;
+      padding: 0 20px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       height: 56px;
-      position: sticky; top: 0; z-index: 100;
+      position: sticky; top: 0; z-index: 200;
     }
-    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header-left { display: flex; align-items: center; gap: 10px; }
     .logo {
-      width: 32px; height: 32px;
+      width: 30px; height: 30px; flex-shrink: 0;
       background: linear-gradient(135deg, var(--accent), var(--purple));
-      border-radius: 8px;
+      border-radius: 7px;
       display: flex; align-items: center; justify-content: center;
-      font-weight: 700; font-size: 16px; color: #fff;
+      font-weight: 700; font-size: 15px; color: #fff;
     }
-    .header h1 { font-size: 16px; font-weight: 600; }
-    .header p { font-size: 12px; color: var(--muted); }
+    .header-text h1 { font-size: 15px; font-weight: 600; white-space: nowrap; }
+    .header-text p { font-size: 11px; color: var(--muted); display: none; }
+
+    .header-right { display: flex; align-items: center; gap: 10px; }
 
     .safety-badge {
-      display: flex; align-items: center; gap: 8px;
-      padding: 6px 14px; border-radius: 20px;
-      font-size: 13px; font-weight: 600; border: 1px solid;
-      transition: all .3s;
+      display: flex; align-items: center; gap: 7px;
+      padding: 5px 12px; border-radius: 20px;
+      font-size: 12px; font-weight: 600; border: 1px solid;
+      transition: all .3s; white-space: nowrap;
     }
-    .safety-badge.safe { background: rgba(63,185,80,.12); border-color: var(--green); color: var(--green); }
-    .safety-badge.violated { background: rgba(248,81,73,.12); border-color: var(--red); color: var(--red); }
-    .safety-badge.idle { background: rgba(139,148,158,.08); border-color: var(--border); color: var(--muted); }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .safety-badge.safe   { background: rgba(63,185,80,.12);  border-color: var(--green);  color: var(--green);  }
+    .safety-badge.violated { background: rgba(248,81,73,.12); border-color: var(--red);   color: var(--red);   }
+    .safety-badge.idle   { background: rgba(139,148,158,.08); border-color: var(--border); color: var(--muted); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 
-    /* ── Layout ── */
+    /* hamburger — visible only on mobile */
+    .hamburger {
+      display: none;
+      background: none; border: 1px solid var(--border);
+      border-radius: 6px; cursor: pointer;
+      padding: 6px 8px; color: var(--text);
+      font-size: 16px; line-height: 1;
+    }
+
+    /* ════════════════════════ OVERLAY ════════════════════════ */
+    .overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.5);
+      z-index: 149;
+    }
+    .overlay.show { display: block; }
+
+    /* ════════════════════════ LAYOUT ════════════════════════ */
     .layout {
-      display: grid;
-      grid-template-columns: 292px 1fr;
+      display: flex;
       min-height: calc(100vh - 56px);
     }
 
-    /* ── Sidebar ── */
+    /* ════════════════════════ SIDEBAR ════════════════════════ */
     .sidebar {
+      width: var(--sidebar-w);
+      flex-shrink: 0;
       background: var(--surface);
       border-right: 1px solid var(--border);
-      padding: 20px;
+      padding: 18px 16px;
       display: flex; flex-direction: column; gap: 0;
       overflow-y: auto;
+      transition: transform .25s ease;
     }
-    .sidebar-section { margin-bottom: 22px; }
+
+    .sidebar-section { margin-bottom: 20px; }
     .section-label {
       font-size: 10px; font-weight: 700;
       text-transform: uppercase; letter-spacing: .1em;
-      color: var(--muted); margin-bottom: 12px;
-      padding-bottom: 6px; border-bottom: 1px solid var(--border);
+      color: var(--muted); margin-bottom: 10px;
+      padding-bottom: 5px; border-bottom: 1px solid var(--border);
     }
 
-    .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+    .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
     .field label {
       font-size: 12px; color: var(--muted);
       display: flex; justify-content: space-between;
@@ -101,31 +123,31 @@
       border-radius: 6px; color: var(--text);
       padding: 7px 10px; font-size: 13px; width: 100%; outline: none;
     }
-    .field input[type="range"] { width: 100%; cursor: pointer; }
-    .field input:focus { border-color: var(--accent); }
+    .field input[type="range"] { width: 100%; cursor: pointer; accent-color: var(--accent); }
+    .field input[type="number"]:focus { border-color: var(--accent); }
 
     .toggle-row {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 9px 12px; background: var(--surface2);
-      border-radius: 8px; border: 1px solid var(--border); margin-bottom: 10px;
+      padding: 9px 10px; background: var(--surface2);
+      border-radius: 7px; border: 1px solid var(--border); margin-bottom: 10px;
     }
     .toggle-label { font-size: 13px; }
     .toggle {
-      position: relative; width: 40px; height: 22px;
+      position: relative; width: 38px; height: 21px;
       background: var(--border); border-radius: 11px; cursor: pointer; transition: background .2s;
     }
     .toggle.on { background: var(--green); }
     .toggle::after {
       content: ''; position: absolute;
-      width: 16px; height: 16px; border-radius: 50%;
+      width: 15px; height: 15px; border-radius: 50%;
       background: #fff; top: 3px; left: 3px; transition: transform .2s;
     }
-    .toggle.on::after { transform: translateX(18px); }
+    .toggle.on::after { transform: translateX(17px); }
 
     .btn {
-      padding: 10px 16px; border-radius: 8px; border: none;
+      padding: 10px 14px; border-radius: 7px; border: none;
       font-size: 13px; font-weight: 600; cursor: pointer; width: 100%; transition: all .15s;
-      margin-bottom: 8px;
+      margin-bottom: 7px;
     }
     .btn-primary { background: var(--accent); color: #0d1117; }
     .btn-primary:hover { filter: brightness(1.1); }
@@ -133,28 +155,22 @@
     .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
     .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
 
-    .cbf-params { font-size: 12px; color: var(--muted); line-height: 2.0; }
+    .cbf-params { font-size: 11px; color: var(--muted); line-height: 2.0; }
     .cbf-params strong { color: var(--text); }
 
-    /* ── Main ── */
-    .main { padding: 24px; overflow-y: auto; }
+    /* ════════════════════════ MAIN ════════════════════════ */
+    .main { flex: 1; min-width: 0; padding: 20px; overflow-y: auto; }
 
-    .main-section { margin-bottom: 28px; }
+    .main-section { margin-bottom: 24px; }
     .main-section-title {
-      font-size: 11px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .08em; color: var(--muted);
-      margin-bottom: 14px; padding-bottom: 6px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .09em; color: var(--muted);
+      margin-bottom: 12px; padding-bottom: 5px;
       border-bottom: 1px solid var(--border);
     }
 
-    /* ── Stats rows ── */
+    /* ════════════════════════ STAT CARDS ════════════════════════ */
     .stats-row {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      margin-bottom: 0;
-    }
-    .stats-row-2 {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 10px;
@@ -162,109 +178,151 @@
     .stat-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 14px 16px;
+      border-radius: 9px;
+      padding: 13px 14px;
     }
     .stat-card .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
-    .stat-card .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
-    .stat-card .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
-    .val-green { color: var(--green); }
-    .val-red { color: var(--red); }
-    .val-yellow { color: var(--yellow); }
-    .val-blue { color: var(--accent); }
+    .stat-card .value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+    .stat-card .sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .val-green  { color: var(--green);  }
+    .val-red    { color: var(--red);    }
+    .val-blue   { color: var(--accent); }
     .val-purple { color: var(--purple); }
-    .val-muted { color: var(--muted); }
+    .val-muted  { color: var(--muted);  }
+    .val-yellow { color: var(--yellow); }
 
-    /* ── Basin badge ── */
+    /* ════════════════════════ BASIN BADGE ════════════════════════ */
     .basin-badge {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 5px 12px; border-radius: 16px;
-      font-size: 13px; font-weight: 600;
-      border: 1px solid currentColor; margin-top: 6px;
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 4px 11px; border-radius: 14px;
+      font-size: 12px; font-weight: 600;
+      border: 1px solid currentColor; margin-top: 5px;
     }
-    .basin-badge.Analytical { color: var(--accent); background: rgba(88,166,255,.1); }
-    .basin-badge.Collaborative { color: var(--green); background: rgba(63,185,80,.1); }
-    .basin-badge.Exploratory { color: var(--yellow); background: rgba(210,153,34,.1); }
-    .basin-badge.Balanced { color: var(--purple); background: rgba(188,140,255,.1); }
+    .basin-badge.Analytical   { color: var(--accent);  background: rgba(88,166,255,.1);  }
+    .basin-badge.Collaborative { color: var(--green);  background: rgba(63,185,80,.1);   }
+    .basin-badge.Exploratory  { color: var(--yellow);  background: rgba(210,153,34,.1);  }
+    .basin-badge.Balanced     { color: var(--purple);  background: rgba(188,140,255,.1); }
 
-    /* ── Basin timeline strip ── */
-    .basin-strip-wrap {
-      margin-top: 12px;
-    }
-    .basin-strip-label {
-      font-size: 11px; color: var(--muted); margin-bottom: 5px;
-    }
+    /* ════════════════════════ BASIN STRIP ════════════════════════ */
+    .basin-strip-wrap { margin-top: 12px; }
+    .basin-strip-label { font-size: 11px; color: var(--muted); margin-bottom: 5px; }
     .basin-strip {
-      height: 16px; border-radius: 4px; overflow: hidden;
+      height: 14px; border-radius: 4px; overflow: hidden;
       display: flex; width: 100%; border: 1px solid var(--border);
     }
-    .basin-strip-seg {
-      height: 100%; flex: 1;
-    }
+    .basin-strip-seg { height: 100%; flex: 1; }
 
-    /* ── Charts ── */
+    /* ════════════════════════ CHARTS ════════════════════════ */
     .charts-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 14px;
+      gap: 12px;
     }
     .chart-card {
       background: var(--surface); border: 1px solid var(--border);
-      border-radius: 10px; padding: 18px;
+      border-radius: 9px; padding: 16px;
     }
     .chart-card.wide { grid-column: 1 / -1; }
-    .chart-title { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
-    .chart-sub { font-size: 11px; color: var(--muted); margin-bottom: 14px; }
+    .chart-title { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+    .chart-sub { font-size: 10px; color: var(--muted); margin-bottom: 12px; }
 
-    .legend-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
-    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
-    .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+    .legend-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+    .legend-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--muted); }
+    .legend-dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
 
-    /* ── Seed grid ── */
+    /* ════════════════════════ SEED GRID ════════════════════════ */
     .seed-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-      gap: 10px; margin-top: 12px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px; margin-top: 10px;
     }
     .seed-card {
       background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 8px; padding: 12px; text-align: center;
+      border-radius: 8px; padding: 12px;
     }
-    .seed-card .seed-num { font-size: 11px; color: var(--muted); }
-    .seed-card .seed-min { font-size: 20px; font-weight: 700; margin: 4px 0; }
-    .seed-card .seed-status { font-size: 11px; font-weight: 600; }
-    .seed-card.ok { border-color: rgba(63,185,80,.3); }
-    .seed-card.fail { border-color: rgba(248,81,73,.3); }
+    .seed-card.ok   { border-color: rgba(63,185,80,.3);  }
+    .seed-card.fail { border-color: rgba(248,81,73,.3);  }
+    .seed-card .seed-num { font-size: 10px; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+    .seed-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+    .seed-row .seed-tag { font-size: 10px; color: var(--muted); }
+    .seed-row .seed-val { font-size: 14px; font-weight: 700; }
 
     .spinner {
-      display: inline-block; width: 16px; height: 16px;
+      display: inline-block; width: 15px; height: 15px;
       border: 2px solid var(--border); border-top-color: var(--accent);
       border-radius: 50%; animation: spin .7s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .gap-10 { margin-bottom: 10px; }
+    /* ════════════════════════ MOBILE RESPONSIVE ════════════════════════ */
+    @media (max-width: 767px) {
+      .hamburger { display: block; }
+      .header-text p { display: none; }
+
+      /* sidebar becomes a fixed full-height drawer */
+      .sidebar {
+        position: fixed;
+        top: 56px; left: 0; bottom: 0;
+        z-index: 150;
+        transform: translateX(-100%);
+        width: min(var(--sidebar-w), 88vw);
+        box-shadow: 4px 0 24px rgba(0,0,0,.5);
+      }
+      .sidebar.open { transform: translateX(0); }
+
+      .main { padding: 14px; }
+
+      .stats-row {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .charts-grid {
+        grid-template-columns: 1fr;
+      }
+      .chart-card.wide { grid-column: 1; }
+
+      .seed-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 400px) {
+      .stats-row { grid-template-columns: 1fr 1fr; }
+      .seed-grid  { grid-template-columns: 1fr; }
+    }
+
+    @media (min-width: 768px) {
+      .header-text p { display: block; }
+    }
   </style>
 </head>
 <body>
 
+<!-- Overlay (mobile only) -->
+<div class="overlay" id="overlay" onclick="closeSidebar()"></div>
+
+<!-- Header -->
 <header class="header">
   <div class="header-left">
+    <button class="hamburger" id="hamburger" onclick="toggleSidebar()" aria-label="Settings">☰</button>
     <div class="logo">A</div>
-    <div>
+    <div class="header-text">
       <h1>Aureonics CBF Governor</h1>
       <p>safe · adaptive · basin-directed · simplex-consistent</p>
     </div>
   </div>
-  <div id="safetyBadge" class="safety-badge idle">
-    <div class="dot"></div>
-    <span id="safetyText">Ready</span>
+  <div class="header-right">
+    <div id="safetyBadge" class="safety-badge idle">
+      <div class="dot"></div>
+      <span id="safetyText">Ready</span>
+    </div>
   </div>
 </header>
 
 <div class="layout">
 
   <!-- ══════════════════════════════ SIDEBAR ════════════════════════════════ -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
 
     <div class="sidebar-section">
       <div class="section-label">Simulation Controls</div>
@@ -291,8 +349,8 @@
         <span class="toggle-label">CBF Safety Layer</span>
         <div class="toggle on" id="cbfToggle" onclick="toggleCBF()"></div>
       </div>
-      <button class="btn btn-primary" onclick="runSimulation()">▶ Run Simulation</button>
-      <button class="btn btn-secondary" onclick="runMultiSeed()">⊞ Test All Seeds</button>
+      <button class="btn btn-primary" onclick="runAndClose()">▶ Run Simulation</button>
+      <button class="btn btn-secondary" onclick="runMultiSeedAndClose()">⊞ Governed vs Ungoverned</button>
     </div>
 
     <div class="sidebar-section">
@@ -313,66 +371,65 @@
       <div class="section-label">CBF Parameters</div>
       <div class="cbf-params">
         <div>τ_cbf = <strong>0.05</strong></div>
-        <div>γ = <strong>5.0</strong> (DT-QP solver)</div>
         <div>θ₀ = <strong>1.0</strong>,  θ ∈ [<strong>0.1, 5.0</strong>]</div>
         <div>α_θ = <strong>0.8</strong>,  β_θ = <strong>0.05</strong></div>
-        <div>λ_basin = <strong>0.2</strong>,  margin cutoff = <strong>0.1</strong></div>
+        <div>λ_basin = <strong>0.2</strong>,  cutoff = <strong>0.1</strong></div>
         <div>noise σ = <strong>0.08</strong>  (clip 0.15)</div>
       </div>
     </div>
 
   </aside>
 
-  <!-- ══════════════════════════════ MAIN ══════════════════════════════════ -->
+  <!-- ══════════════════════════════ MAIN ════════════════════════════════ -->
   <main class="main">
 
-    <!-- Section: Constitutional State -->
+    <!-- Constitutional State -->
     <div class="main-section">
       <div class="main-section-title">Constitutional State</div>
-      <div class="stats-row gap-10">
+      <div class="stats-row">
         <div class="stat-card">
-          <div class="label">Minimum M (all time)</div>
+          <div class="label">Minimum M</div>
           <div class="value val-muted" id="statMinM">—</div>
-          <div class="sub">min(C,R,S) · floor = 0.05</div>
+          <div class="sub">min(C,R,S) · floor 0.05</div>
         </div>
         <div class="stat-card">
-          <div class="label">Final θ (adaptive gain)</div>
+          <div class="label">Final θ</div>
           <div class="value val-muted" id="statTheta">—</div>
-          <div class="sub">governor authority at end</div>
+          <div class="sub">adaptive gain at end</div>
         </div>
         <div class="stat-card">
           <div class="label">Current Basin</div>
-          <div id="statBasin" style="margin-top:8px">
+          <div id="statBasin" style="margin-top:6px">
             <span class="basin-badge Balanced">● Balanced</span>
           </div>
-          <div class="sub" style="margin-top:8px">final dominant pillar</div>
+          <div class="sub" style="margin-top:6px">final dominant pillar</div>
         </div>
       </div>
     </div>
 
-    <!-- Section: Safety Monitor -->
+    <!-- Safety Monitor -->
     <div class="main-section">
       <div class="main-section-title">Safety Monitor</div>
       <div class="stats-row">
         <div class="stat-card">
-          <div class="label">Safety Violations</div>
+          <div class="label">Violations</div>
           <div class="value val-muted" id="statViolations">—</div>
-          <div class="sub">steps below τ_cbf = 0.05</div>
+          <div class="sub">steps below 0.05</div>
         </div>
         <div class="stat-card">
-          <div class="label">Avg Recovery Time</div>
+          <div class="label">Recovery Time</div>
           <div class="value val-muted" id="statRecovery">—</div>
-          <div class="sub">steps to exit violation</div>
+          <div class="sub">avg steps to exit</div>
         </div>
         <div class="stat-card">
           <div class="label">CBF Guarantee</div>
           <div class="value val-muted" id="statGuarantee">—</div>
-          <div class="sub">QP-exact discrete-time</div>
+          <div class="sub">QP discrete-time</div>
         </div>
       </div>
     </div>
 
-    <!-- Section: Basin Intelligence -->
+    <!-- Basin Intelligence -->
     <div class="main-section">
       <div class="main-section-title">Basin Intelligence</div>
       <div class="stats-row">
@@ -389,15 +446,14 @@
         <div class="stat-card">
           <div class="label">Directional Gain</div>
           <div class="value val-muted" id="statDirGain">—</div>
-          <div class="sub">Φ_init − Φ_final (↑ = converging)</div>
+          <div class="sub">Φ_init − Φ_final</div>
         </div>
       </div>
 
-      <!-- Basin timeline strip -->
-      <div class="basin-strip-wrap" id="basinStripWrap" style="display:none;margin-top:14px">
-        <div class="basin-strip-label">Basin timeline (Analytical · Collaborative · Exploratory · Balanced)</div>
+      <div class="basin-strip-wrap" id="basinStripWrap" style="display:none;margin-top:12px">
+        <div class="basin-strip-label">Basin timeline</div>
         <div class="basin-strip" id="basinStrip"></div>
-        <div style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap">
+        <div class="legend-row" style="margin-top:7px">
           <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div>Analytical (C)</div>
           <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div>Collaborative (R)</div>
           <div class="legend-item"><div class="legend-dot" style="background:#d29922"></div>Exploratory (S)</div>
@@ -406,52 +462,48 @@
       </div>
     </div>
 
-    <!-- Section: Metrics & Outputs (charts) -->
+    <!-- Metrics & Outputs -->
     <div class="main-section">
       <div class="main-section-title">Metrics &amp; Outputs</div>
       <div class="charts-grid">
 
-        <!-- Pillar chart – wide -->
         <div class="chart-card wide">
           <div class="chart-title">Pillar Values — Constitutional Health</div>
-          <div class="chart-sub">Continuity (C) · Reciprocity (R) · Sovereignty (S) on the simplex · dashed red = τ = 0.05</div>
-          <canvas id="pillarChart" height="80"></canvas>
+          <div class="chart-sub">Continuity · Reciprocity · Sovereignty · dashed = τ_cbf = 0.05</div>
+          <canvas id="pillarChart" height="90"></canvas>
           <div class="legend-row">
-            <div class="legend-item"><div class="legend-dot" style="background:var(--pillar-c)"></div>Continuity</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--pillar-r)"></div>Reciprocity</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--pillar-s)"></div>Sovereignty</div>
-            <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Safety floor</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div>Continuity</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#3fb950"></div>Reciprocity</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#d29922"></div>Sovereignty</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#f85149"></div>Safety floor</div>
           </div>
         </div>
 
-        <!-- Theta chart -->
         <div class="chart-card">
           <div class="chart-title">Adaptive Gain θ(t)</div>
-          <div class="chart-sub">Scales governor force · rises when M approaches floor</div>
-          <canvas id="thetaChart" height="120"></canvas>
+          <div class="chart-sub">Rises under stress, decays when stable</div>
+          <canvas id="thetaChart" height="130"></canvas>
         </div>
 
-        <!-- Stability margin chart -->
         <div class="chart-card">
           <div class="chart-title">Stability Margin M(t)</div>
-          <div class="chart-sub">min(C,R,S) · CBF guarantees M ≥ 0.05</div>
-          <canvas id="marginChart" height="120"></canvas>
+          <div class="chart-sub">min(C,R,S) · CBF keeps M ≥ 0.05</div>
+          <canvas id="marginChart" height="130"></canvas>
         </div>
 
-        <!-- Phi chart – wide -->
         <div class="chart-card wide">
           <div class="chart-title">Potential Φ(t)</div>
-          <div class="chart-sub">Φ = −CCP + 0.5·(IEC − IEC_target)² · lower = better constitutional coherence · descent guard ensures Φ is non-increasing on average</div>
+          <div class="chart-sub">Lower = better constitutional coherence · descent guard prevents Φ from rising</div>
           <canvas id="phiChart" height="70"></canvas>
         </div>
 
       </div>
     </div>
 
-    <!-- Section: Multi-Seed Safety Test -->
+    <!-- Multi-seed comparison -->
     <div class="main-section" id="seedSection" style="display:none">
-      <div class="main-section-title">Multi-Seed Safety Test</div>
-      <div id="seedSummary" style="font-size:13px;margin-bottom:12px;"></div>
+      <div class="main-section-title">Governed vs Ungoverned — All Seeds</div>
+      <div id="seedSummary" style="font-size:12px;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:10px"></div>
       <div class="seed-grid" id="seedGrid"></div>
     </div>
 
@@ -462,16 +514,29 @@
   let charts = {};
   let cbfOn = true;
 
+  /* ── Sidebar (mobile) ── */
+  function toggleSidebar() {
+    const s = document.getElementById('sidebar');
+    const ov = document.getElementById('overlay');
+    s.classList.toggle('open');
+    ov.classList.toggle('show', s.classList.contains('open'));
+  }
+  function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('overlay').classList.remove('show');
+  }
+  function runAndClose() { closeSidebar(); runSimulation(); }
+  function runMultiSeedAndClose() { closeSidebar(); runMultiSeed(); }
+
+  /* ── CBF toggle ── */
   function toggleCBF() {
     cbfOn = !cbfOn;
     document.getElementById('cbfToggle').classList.toggle('on', cbfOn);
   }
 
   const BASIN_COLORS = {
-    Analytical:    '#58a6ff',
-    Collaborative: '#3fb950',
-    Exploratory:   '#d29922',
-    Balanced:      '#bc8cff',
+    Analytical: '#58a6ff', Collaborative: '#3fb950',
+    Exploratory: '#d29922', Balanced: '#bc8cff',
   };
 
   function setStat(id, val, cls) {
@@ -482,31 +547,23 @@
 
   function setBadge(state) {
     const badge = document.getElementById('safetyBadge');
-    const text = document.getElementById('safetyText');
+    document.getElementById('safetyText').textContent =
+      state === 'safe' ? 'Safety Guaranteed'
+      : state === 'violated' ? 'Safety Violated' : 'Ready';
     badge.className = 'safety-badge ' + state;
-    text.textContent = state === 'safe' ? 'Safety Guaranteed'
-                     : state === 'violated' ? 'Safety Violated'
-                     : 'Ready';
   }
 
-  function toXY(arr) {
-    return arr.map((v, i) => ({ x: i, y: v }));
-  }
+  function toXY(arr) { return arr.map((v, i) => ({ x: i, y: v })); }
 
   function safeLinePlugin() {
     return {
-      id: 'safetyLine',
+      id: 'safetyLine_' + Math.random(),
       afterDraw(chart) {
         const { ctx, scales: { y, x } } = chart;
         const yPx = y.getPixelForValue(0.05);
         ctx.save();
-        ctx.strokeStyle = '#f85149';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([6, 4]);
-        ctx.beginPath();
-        ctx.moveTo(x.left, yPx);
-        ctx.lineTo(x.right, yPx);
-        ctx.stroke();
+        ctx.strokeStyle = '#f85149'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+        ctx.beginPath(); ctx.moveTo(x.left, yPx); ctx.lineTo(x.right, yPx); ctx.stroke();
         ctx.restore();
       }
     };
@@ -516,24 +573,13 @@
     const ctx = document.getElementById(id).getContext('2d');
     if (charts[id]) charts[id].destroy();
     const allData = datasets.flatMap(d => d.data.map(p => p.y));
-    const computedMin = minY !== undefined ? minY : Math.min(...allData) - 0.02;
-    const computedMax = maxY !== undefined ? maxY : Math.max(...allData) + 0.02;
-    const plugins = [{}];
-    if (safety) plugins.push(safeLinePlugin());
-
+    const cMin = minY !== undefined ? minY : Math.min(...allData) - 0.02;
+    const cMax = maxY !== undefined ? maxY : Math.max(...allData) + 0.02;
     charts[id] = new Chart(ctx, {
       type: 'line',
-      data: {
-        datasets: datasets.map(d => ({
-          ...d,
-          pointRadius: 0,
-          borderWidth: d.borderWidth || 1.8,
-          tension: 0.3,
-        }))
-      },
+      data: { datasets: datasets.map(d => ({ ...d, pointRadius: 0, borderWidth: d.borderWidth || 1.8, tension: 0.3 })) },
       options: {
-        responsive: true,
-        animation: { duration: 350 },
+        responsive: true, animation: { duration: 350 },
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
@@ -541,21 +587,20 @@
             backgroundColor: '#1c2230', borderColor: '#30363d', borderWidth: 1,
             titleColor: '#e6edf3', bodyColor: '#8b949e',
             callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(4)}` }
-          },
-          ...Object.fromEntries(plugins.filter(p => p.id).map(p => [p.id, p]))
+          }
         },
         scales: {
           x: {
             type: 'linear',
-            title: { display: true, text: 'Step (t)', color: '#8b949e', font: { size: 11 } },
+            title: { display: true, text: 'Step (t)', color: '#8b949e', font: { size: 10 } },
             grid: { color: 'rgba(48,54,61,.5)' },
-            ticks: { color: '#8b949e', font: { size: 11 } },
+            ticks: { color: '#8b949e', font: { size: 10 } },
           },
           y: {
-            title: { display: true, text: yLabel, color: '#8b949e', font: { size: 11 } },
+            title: { display: true, text: yLabel, color: '#8b949e', font: { size: 10 } },
             grid: { color: 'rgba(48,54,61,.5)' },
-            ticks: { color: '#8b949e', font: { size: 11 } },
-            min: computedMin, max: computedMax,
+            ticks: { color: '#8b949e', font: { size: 10 } },
+            min: cMin, max: cMax,
           }
         }
       },
@@ -578,10 +623,11 @@
   }
 
   function updateBasinBadge(basin) {
-    const el = document.getElementById('statBasin');
-    el.innerHTML = `<span class="basin-badge ${basin}">● ${basin}</span>`;
+    document.getElementById('statBasin').innerHTML =
+      `<span class="basin-badge ${basin}">● ${basin}</span>`;
   }
 
+  /* ── Run single simulation ── */
   async function runSimulation() {
     const seed = document.getElementById('seed').value;
     const steps = document.getElementById('steps').value;
@@ -591,116 +637,121 @@
     const iecTarget = document.getElementById('iecTarget').value;
 
     setBadge('idle');
+    setStat('statMinM', '…', 'val-muted');
 
     const url = `/cbf/simulate?seed=${seed}&steps=${steps}&alpha=${alpha}&dt=${dt}`
               + `&cbf_enabled=${cbfOn}&signal=${signal}&iec_target=${iecTarget}`;
     let data;
-    try {
-      const res = await fetch(url);
-      data = await res.json();
-    } catch (e) { alert('Request failed: ' + e); return; }
+    try { const r = await fetch(url); data = await r.json(); }
+    catch (e) { alert('Request failed: ' + e); return; }
 
     const traj = data.trajectory;
-    const Ct = toXY(traj.map(d => d.C));
-    const Rt = toXY(traj.map(d => d.R));
-    const St = toXY(traj.map(d => d.S));
-    const Mt = toXY(traj.map(d => d.M));
-    const Tt = toXY(data.theta_trajectory);
-    const Pt = toXY(data.phi_trajectory);
-
     makeChart('pillarChart', [
-      { label: 'Continuity (C)', data: Ct, borderColor: '#58a6ff' },
-      { label: 'Reciprocity (R)', data: Rt, borderColor: '#3fb950' },
-      { label: 'Sovereignty (S)', data: St, borderColor: '#d29922' },
+      { label: 'C', data: toXY(traj.map(d => d.C)), borderColor: '#58a6ff' },
+      { label: 'R', data: toXY(traj.map(d => d.R)), borderColor: '#3fb950' },
+      { label: 'S', data: toXY(traj.map(d => d.S)), borderColor: '#d29922' },
     ], 'Pillar value', 0, 1.02, true);
 
     makeChart('thetaChart', [
-      { label: 'θ(t)', data: Tt, borderColor: '#bc8cff' },
+      { label: 'θ(t)', data: toXY(data.theta_trajectory), borderColor: '#bc8cff' }
     ], 'θ');
 
     makeChart('marginChart', [
-      { label: 'M(t)', data: Mt, borderColor: '#58a6ff', borderWidth: 2 },
-    ], 'Stability margin M', 0, 1.02, true);
+      { label: 'M(t)', data: toXY(traj.map(d => d.M)), borderColor: '#58a6ff', borderWidth: 2 }
+    ], 'M', 0, 1.02, true);
 
-    const phiMin = Math.min(...data.phi_trajectory);
-    const phiMax = Math.max(...data.phi_trajectory);
-    const phiPad = Math.max(0.01, (phiMax - phiMin) * 0.1);
+    const pt = data.phi_trajectory;
+    const pMin = Math.min(...pt), pMax = Math.max(...pt), pad = Math.max(.01, (pMax - pMin) * .1);
     makeChart('phiChart', [
-      { label: 'Φ(t)', data: Pt, borderColor: '#f0883e', borderWidth: 1.5 },
-    ], 'Φ', phiMin - phiPad, phiMax + phiPad);
+      { label: 'Φ(t)', data: toXY(pt), borderColor: '#f0883e', borderWidth: 1.5 }
+    ], 'Φ', pMin - pad, pMax + pad);
 
-    // Stats — Constitutional State
     const safe = !data.safety_violated;
     setStat('statMinM', data.min_M.toFixed(5), safe ? 'val-green' : 'val-red');
-    const finalTheta = data.theta_trajectory[data.theta_trajectory.length - 1];
-    setStat('statTheta', finalTheta.toFixed(3), 'val-purple');
-    const finalBasin = traj[traj.length - 1].basin;
-    updateBasinBadge(finalBasin);
+    setStat('statTheta', data.theta_trajectory[data.theta_trajectory.length - 1].toFixed(3), 'val-purple');
+    updateBasinBadge(traj[traj.length - 1].basin);
 
-    // Stats — Safety Monitor
     setStat('statViolations', data.time_below_safe, data.time_below_safe === 0 ? 'val-green' : 'val-red');
     setStat('statRecovery', data.time_below_safe === 0 ? '—' : data.avg_recovery_time.toFixed(2), 'val-blue');
     setStat('statGuarantee', safe ? 'HOLDS' : 'BROKEN', safe ? 'val-green' : 'val-red');
 
-    // Stats — Basin Intelligence
-    setStat('statPhiInit', data.phi_initial.toFixed(4), 'val-muted');
-    setStat('statPhiFinal', data.phi_final.toFixed(4), 'val-muted');
+    setStat('statPhiInit',   data.phi_initial.toFixed(4), 'val-muted');
+    setStat('statPhiFinal',  data.phi_final.toFixed(4),   'val-muted');
     const dg = data.directional_gain;
     setStat('statDirGain', (dg >= 0 ? '+' : '') + dg.toFixed(4), dg >= 0 ? 'val-green' : 'val-yellow');
 
-    // Basin timeline strip
     renderBasinStrip(traj.map(d => d.basin));
-
     setBadge(safe ? 'safe' : 'violated');
   }
 
+  /* ── Multi-seed governed vs ungoverned ── */
   async function runMultiSeed() {
     const steps = document.getElementById('steps').value;
-    const alpha = document.getElementById('alpha').value;
-    const dt = document.getElementById('dt').value;
+    const alpha  = document.getElementById('alpha').value;
+    const dt     = document.getElementById('dt').value;
     const signal = document.getElementById('signal').value;
     const iecTarget = document.getElementById('iecTarget').value;
 
     document.getElementById('seedSection').style.display = '';
     document.getElementById('seedGrid').innerHTML =
-      '<div style="color:var(--muted);display:flex;align-items:center;gap:8px"><div class="spinner"></div>Running 8 seeds…</div>';
-    document.getElementById('seedSummary').textContent = '';
+      '<div style="color:var(--muted);display:flex;align-items:center;gap:8px;padding:8px 0"><div class="spinner"></div>Running 8 seeds × 2 modes…</div>';
+    document.getElementById('seedSummary').innerHTML = '';
 
     let data;
     try {
-      const res = await fetch(`/cbf/multi_seed?steps=${steps}&alpha=${alpha}&dt=${dt}&signal=${signal}&iec_target=${iecTarget}`);
-      data = await res.json();
+      const r = await fetch(`/cbf/multi_seed?steps=${steps}&alpha=${alpha}&dt=${dt}&signal=${signal}&iec_target=${iecTarget}`);
+      data = await r.json();
     } catch (e) { alert('Request failed: ' + e); return; }
 
+    /* Summary banners */
+    const sumEl = document.getElementById('seedSummary');
+    const govOk = data.all_governed_safe;
+    const unvFail = data.all_ungoverned_violated;
+    sumEl.innerHTML =
+      `<span style="color:${govOk ? 'var(--green)' : 'var(--red)'};font-weight:600">${govOk ? '✓' : '✗'} Governed: ${govOk ? 'all 8 safe' : 'some violated'}</span>` +
+      `<span style="color:${unvFail ? 'var(--red)' : 'var(--yellow)'};font-weight:600">${unvFail ? '✗' : '⚠'} Ungoverned: ${unvFail ? 'all 8 collapse (expected)' : 'some still safe'}</span>`;
+
+    /* Seed cards */
     const grid = document.getElementById('seedGrid');
     grid.innerHTML = '';
     for (const r of data.results) {
-      const ok = !r.safety_violated;
-      const dg = r.directional_gain;
+      const gOk  = !r.governed.safety_violated;
+      const uOk  = !r.ungoverned.safety_violated;
+      const dg   = r.governed.directional_gain;
       const card = document.createElement('div');
-      card.className = 'seed-card ' + (ok ? 'ok' : 'fail');
+      card.className = 'seed-card ' + (gOk ? 'ok' : 'fail');
       card.innerHTML = `
         <div class="seed-num">seed = ${r.seed}</div>
-        <div class="seed-min" style="color:${ok ? 'var(--green)' : 'var(--red)'}">${r.min_M.toFixed(5)}</div>
-        <div class="seed-status" style="color:${ok ? 'var(--green)' : 'var(--red)'}">${ok ? '✓ SAFE' : '✗ VIOLATED'}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">Φ gain: <strong style="color:${dg>=0?'var(--green)':'var(--yellow)'}">${dg>=0?'+':''}${dg.toFixed(4)}</strong></div>
-        <div style="font-size:10px;color:var(--muted)">${r.time_below_safe} violations</div>
+        <div class="seed-row">
+          <span class="seed-tag">Governed min M</span>
+          <span class="seed-val" style="color:${gOk ? 'var(--green)' : 'var(--red)'}">${r.governed.min_M.toFixed(5)}</span>
+        </div>
+        <div class="seed-row">
+          <span class="seed-tag">Ungoverned min M</span>
+          <span class="seed-val" style="color:${uOk ? 'var(--yellow)' : 'var(--red)'}">${r.ungoverned.min_M.toFixed(5)}</span>
+        </div>
+        <div class="seed-row" style="margin-top:4px">
+          <span class="seed-tag">Ungov violations</span>
+          <span style="font-size:12px;color:var(--red);font-weight:600">${r.ungoverned.time_below_safe} steps</span>
+        </div>
+        <div class="seed-row">
+          <span class="seed-tag">Φ gain (gov)</span>
+          <span style="font-size:12px;color:${dg>=0?'var(--green)':'var(--yellow)'};font-weight:600">${dg>=0?'+':''}${dg.toFixed(4)}</span>
+        </div>
       `;
       grid.appendChild(card);
     }
 
-    const allSafe = data.all_seeds_safe;
-    const allConv = data.all_seeds_converging;
-    const safeMsg = allSafe
-      ? `<span style="color:var(--green);font-weight:600">✓ All 8 seeds safe</span>`
-      : `<span style="color:var(--red);font-weight:600">✗ Some seeds violated safety floor</span>`;
-    const convMsg = allConv
-      ? `<span style="color:var(--green);font-weight:600">  ·  ✓ All converging (Φ decreasing)</span>`
-      : `<span style="color:var(--yellow);font-weight:600">  ·  ⚠ Some seeds not yet converging</span>`;
-    document.getElementById('seedSummary').innerHTML = safeMsg + convMsg;
+    /* Scroll to results on mobile */
+    document.getElementById('seedSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   window.addEventListener('load', () => runSimulation());
+
+  /* Close sidebar on resize to desktop */
+  window.addEventListener('resize', () => {
+    if (window.innerWidth >= 768) closeSidebar();
+  });
 </script>
 </body>
 </html>

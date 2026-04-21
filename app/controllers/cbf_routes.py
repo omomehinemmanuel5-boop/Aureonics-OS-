@@ -55,25 +55,34 @@ def cbf_multi_seed(
     signal: float = 0.0,
     iec_target: float = 0.333,
 ):
+    """
+    Runs each seed both with and without the CBF governor so the
+    user can see the clear difference between governed and ungoverned.
+    """
     seeds = [0, 1, 7, 13, 21, 42, 99, 123]
     input_data = _build_input_data(signal, iec_target)
     results = []
     for seed in seeds:
-        r = simulate_cbf(steps=steps, dt=dt, seed=seed, alpha=alpha, cbf_enabled=True, input_data=input_data)
+        gov = simulate_cbf(steps=steps, dt=dt, seed=seed, alpha=alpha, cbf_enabled=True, input_data=input_data)
+        ungov = simulate_cbf(steps=steps, dt=dt, seed=seed, alpha=alpha, cbf_enabled=False, input_data=input_data)
         results.append({
             "seed": seed,
-            "min_M": r["min_M"],
-            "safety_violated": r["safety_violated"],
-            "time_below_safe": r["time_below_safe"],
-            "avg_recovery_time": r["avg_recovery_time"],
-            "directional_gain": r["directional_gain"],
-            "phi_initial": r["phi_initial"],
-            "phi_final": r["phi_final"],
+            "governed": {
+                "min_M": gov["min_M"],
+                "safety_violated": gov["safety_violated"],
+                "time_below_safe": gov["time_below_safe"],
+                "directional_gain": gov["directional_gain"],
+            },
+            "ungoverned": {
+                "min_M": ungov["min_M"],
+                "safety_violated": ungov["safety_violated"],
+                "time_below_safe": ungov["time_below_safe"],
+            },
         })
-    all_safe = all(not r["safety_violated"] for r in results)
-    all_converging = all(r["directional_gain"] >= 0 for r in results)
+    all_governed_safe = all(not r["governed"]["safety_violated"] for r in results)
+    all_ungoverned_violated = all(r["ungoverned"]["safety_violated"] for r in results)
     return {
         "results": results,
-        "all_seeds_safe": all_safe,
-        "all_seeds_converging": all_converging,
+        "all_governed_safe": all_governed_safe,
+        "all_ungoverned_violated": all_ungoverned_violated,
     }
