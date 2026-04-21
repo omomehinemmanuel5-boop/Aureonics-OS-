@@ -1,36 +1,39 @@
 """
 Aureonics CBF Governor Service
 ==============================
-Implements a Control Barrier Function (CBF)-constrained adaptive governor
-that guarantees min(x_i) >= TAU_CBF for all time steps under stochastic forcing.
-
 Architecture:
-  dynamics  →  adaptive governor  →  CBF safety filter  →  state update
+  intrinsic_dynamics  →  adaptive governor  →  basin force  →  CBF filter  →  state update
 
-The CBF filter is structured as a reusable module that can be upgraded
-to a full Quadratic Program (QP)-based controller.
+CBF is always applied LAST, guaranteeing min(x_i) >= TAU_CBF for all time.
+Basin Intelligence Layer shapes convergence toward meaningful interior structure.
 """
 import random
 
 # ── Safety parameters ──────────────────────────────────────────────────────────
-TAU_CBF = 0.05       # safety floor: no pillar may fall below this
-DT_DEFAULT = 1.0     # time step
+TAU_CBF = 0.05          # safety floor: no pillar may fall below this
+DT_DEFAULT = 1.0        # time step
 
 # ── Governor parameters ────────────────────────────────────────────────────────
-TAU_GOV = 0.25       # governor correction activates below this threshold
-THETA_0 = 1.0        # baseline adaptive gain
+TAU_GOV = 0.25          # governor correction activates below this threshold
+THETA_0 = 1.0           # baseline adaptive gain
 THETA_MIN = 0.1
 THETA_MAX = 5.0
-ALPHA_THETA = 0.8    # gain increase rate on error
-BETA_THETA = 0.05    # decay rate toward theta_0
-DEADZONE = 0.01      # ignore tiny errors
-TARGET_MARGIN = 0.33 # desired stability margin (simplex centroid)
+ALPHA_THETA = 0.8       # gain increase rate on error
+BETA_THETA = 0.05       # decay rate toward theta_0
+DEADZONE = 0.01         # ignore tiny errors
+TARGET_MARGIN = 0.33    # desired stability margin (simplex centroid)
 
 # ── Noise parameters ──────────────────────────────────────────────────────────
 NOISE_SIGMA = 0.08
 NOISE_CLIP = 0.15
 
+# ── Basin Intelligence parameters ─────────────────────────────────────────────
+LAMBDA_GAIN = 0.2       # basin force gain
+MAX_FORCE_NORM = 1.0    # cap total basin force L1 norm
+MARGIN_SAFETY_CUTOFF = 0.1   # zero basin force when system is close to collapse
+
 NORMALIZATION_EPSILON = 1e-12
+FLOAT_TOLERANCE = 1e-9  # floating-point noise threshold for safety check
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -43,12 +46,11 @@ def _gauss_clip(rng: random.Random, sigma: float, clip: float) -> float:
 
 def _replicator(x: list[float], alpha: float = 0.5) -> list[float]:
     """Standard replicator dynamics — mass-conserving."""
-    c, r, s = x
     a = [0.5, 0.5, 0.5]
     fitness = [
-        a[0] - alpha * (r + s),
-        a[1] - alpha * (c + s),
-        a[2] - alpha * (c + r),
+        a[0] - alpha * (x[1] + x[2]),
+        a[1] - alpha * (x[0] + x[2]),
+        a[2] - alpha * (x[0] + x[1]),
     ]
     f_bar = sum(x[i] * fitness[i] for i in range(3))
     return [x[i] * (fitness[i] - f_bar) for i in range(3)]
@@ -75,6 +77,91 @@ def _governor_G(x: list[float], tau_gov: float = TAU_GOV) -> list[float]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# Basin Intelligence Layer
+# ══════════════════════════════════════════════════════════════════════════════
+
+def compute_ccp(x: list[float], input_data: dict) -> float:
+    """
+    Constitutional Coherence Profile.
+    Measures how close the state is to a balanced interior.
+    CCP = 1.0 at the centroid [1/3, 1/3, 1/3], 0.0 at any corner.
+    An external signal can shift the effective CCP up or down.
+    """
+    centroid = 1.0 / 3.0
+    variance = sum((xi - centroid) ** 2 for xi in x)
+    ccp_base = max(0.0, 1.0 - 1.5 * variance)   # 1 - (3/2)*sum((xi-1/3)^2)
+    signal = float(input_data.get("signal", 0.0))
+    return min(1.0, max(0.0, ccp_base + 0.1 * signal))
+
+
+def compute_iec(x: list[float], input_data: dict) -> float:
+    """
+    Internal Energy Coherence.
+    Measures distance from collapse: IEC = 3*min(x).
+    IEC = 1.0 at centroid, 0.0 at any corner vertex.
+    """
+    iec_base = 3.0 * min(x)
+    signal = float(input_data.get("signal", 0.0))
+    return min(1.0, max(0.0, iec_base + 0.05 * signal))
+
+
+def compute_phi(x: list[float], input_data: dict) -> float:
+    """
+    Potential function Φ(x). Lower is better.
+    Φ = -w1*CCP + w2*(IEC - IEC_target)^2
+    System is directed toward high CCP and IEC near its target.
+    """
+    ccp = compute_ccp(x, input_data)
+    iec = compute_iec(x, input_data)
+    iec_target = float(input_data.get("iec_target", 1.0 / 3.0))
+    w1 = 1.0
+    w2 = 0.5
+    return -w1 * ccp + w2 * (iec - iec_target) ** 2
+
+
+def cap_force(v: list[float], max_norm: float = MAX_FORCE_NORM) -> list[float]:
+    """Cap force vector by L1 norm."""
+    norm = sum(abs(vi) for vi in v)
+    if norm > max_norm and norm > 0.0:
+        scale = max_norm / norm
+        return [vi * scale for vi in v]
+    return list(v)
+
+
+def compute_basin_force(x: list[float], input_data: dict) -> list[float]:
+    """
+    Basin force derived from the gradient of Φ, projected onto the simplex
+    (zero mean → mass-conserving) and capped to MAX_FORCE_NORM.
+
+    u_basin_i = -(∂Φ/∂x_i - mean(∂Φ/∂x)) * lambda_gain
+    """
+    eps = 1e-4
+    grad = []
+    for i in range(3):
+        x_up = x[:]
+        x_down = x[:]
+        x_up[i] += eps
+        x_down[i] -= eps
+        dphi = (compute_phi(x_up, input_data) - compute_phi(x_down, input_data)) / (2.0 * eps)
+        grad.append(dphi)
+    mean_grad = sum(grad) / 3.0
+    force = [-(g - mean_grad) * LAMBDA_GAIN for g in grad]
+    return cap_force(force)
+
+
+def identify_basin(x: list[float]) -> str:
+    """
+    Classify the current state into one of four constitutional basins.
+    Thresholds are relative to the simplex interior.
+    """
+    labels = ["Analytical", "Collaborative", "Exploratory"]
+    max_val = max(x)
+    if max_val > 0.4:
+        return labels[x.index(max_val)]
+    return "Balanced"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # CBF Safety Module
 # (structured for future upgrade to full QP controller)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -87,20 +174,12 @@ def _cbf_safety_filter(
     dt: float = DT_DEFAULT,
 ) -> list[float]:
     """
-    Discrete-time Control Barrier Function safety filter.
+    Discrete-time CBF safety filter (exact QP solution for n=3).
 
     Guarantees: x_i(t+1) = x_i + dt*(f_i + u_i) >= tau_cbf for all i,
     while maintaining mass conservation (sum(u) = 0).
 
-    Algorithm (analytically solves the n=3 QP):
-    1. Compute minimum safe control u_min_i = (tau_cbf - x_i)/dt - f_i
-    2. Find active constraints: pillars where u_des_i < u_min_i
-    3. Set active pillar controls to u_min_i
-    4. Distribute the resulting mass excess equally to inactive (unconstrained) pillars
-    5. If the redistribution activates additional constraints, iterate (max 5 passes)
-
-    This is the exact QP solution for:
-        min ||u - u_des||^2  s.t.  u_i >= u_min_i for all i,  sum(u) = 0
+    min ||u - u_des||^2  s.t.  u_i >= (tau_cbf - x_i)/dt - f_i,  sum(u) = 0
     """
     u_min = [(tau_cbf - x[i]) / dt - f[i] for i in range(3)]
     u = list(u_des)
@@ -109,16 +188,12 @@ def _cbf_safety_filter(
         active = [i for i in range(3) if u[i] < u_min[i]]
         if not active:
             break
-
         inactive = [i for i in range(3) if i not in active]
-
         for i in active:
             u[i] = u_min[i]
-
         current_sum = sum(u)
         if abs(current_sum) < NORMALIZATION_EPSILON:
             break
-
         if inactive:
             excess_per = current_sum / len(inactive)
             for j in inactive:
@@ -130,15 +205,11 @@ def _cbf_safety_filter(
     return u
 
 
-FLOAT_TOLERANCE = 1e-9   # floating-point noise threshold for safety check
-
-
 def _normalize(x: list[float]) -> tuple[list[float], bool]:
     clamped = [max(0.0, xi) for xi in x]
     total = sum(clamped)
     if total <= NORMALIZATION_EPSILON:
         return [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0], True
-    # Only renormalize if total deviates from 1 by more than float noise
     if abs(total - 1.0) < 1e-10:
         return clamped, False
     return [xi / total for xi in clamped], False
@@ -155,37 +226,70 @@ def simulate_cbf(
     seed: int = 42,
     alpha: float = 0.5,
     cbf_enabled: bool = True,
+    input_data: dict | None = None,
 ) -> dict:
+    """
+    Full simulation step:
+      dx = replicator_dynamics + θ(t)*governor_force + u_basin
+      CBF enforcement applied LAST.
+    """
+    if input_data is None:
+        input_data = {}
+
     rng = random.Random(seed)
     x = [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0]
     theta = THETA_0
 
     trajectory: list[dict] = []
     theta_traj: list[float] = []
+    phi_traj: list[float] = []
     safety_violated = False
     min_m_global = 1.0
     time_below_safe = 0
     recovery_times: list[int] = []
     violation_start: int | None = None
 
+    phi_initial = compute_phi(x, input_data)
+
     for t in range(steps):
+        # ── 1. Intrinsic dynamics (replicator + noise) ──────────────────────
         f = _intrinsic_dynamics(x, rng, alpha)
 
         if cbf_enabled:
+            # ── 2. Governor force ──────────────────────────────────────────
             G = _governor_G(x)
-            u_des = [theta * g for g in G]
-            u_safe = _cbf_safety_filter(x, f, u_des, tau_cbf=TAU_CBF, dt=dt)
+            u_gov = [theta * g for g in G]
+
+            # ── 3. Basin force (safety interaction rule §5) ────────────────
+            if min(x) >= MARGIN_SAFETY_CUTOFF:
+                u_basin = compute_basin_force(x, input_data)
+                # ── 4. Descent guard (§6) ──────────────────────────────────
+                phi_prev = compute_phi(x, input_data)
+                x_cand_raw = [x[i] + dt * (f[i] + u_gov[i] + u_basin[i]) for i in range(3)]
+                x_cand, _ = _normalize(x_cand_raw)
+                phi_cand = compute_phi(x_cand, input_data)
+                if phi_cand > phi_prev:
+                    u_basin = [0.5 * u for u in u_basin]
+            else:
+                u_basin = [0.0, 0.0, 0.0]
+
+            # ── 5. CBF filter — applied LAST on combined desired control ───
+            u_des_combined = [u_gov[i] + u_basin[i] for i in range(3)]
+            u_safe = _cbf_safety_filter(x, f, u_des_combined, tau_cbf=TAU_CBF, dt=dt)
             total_force = [f[i] + u_safe[i] for i in range(3)]
         else:
             total_force = f[:]
             u_safe = [0.0, 0.0, 0.0]
+            u_basin = [0.0, 0.0, 0.0]
 
+        # ── 6. State update (simplex projection) ────────────────────────────
         x_next = [x[i] + dt * total_force[i] for i in range(3)]
         x_next, _ = _normalize(x_next)
         x = x_next
 
         M_new = min(x)
 
+        # ── 7. Safety accounting ────────────────────────────────────────────
         if M_new < TAU_CBF - FLOAT_TOLERANCE:
             safety_violated = True
             time_below_safe += 1
@@ -197,13 +301,18 @@ def simulate_cbf(
 
         min_m_global = min(min_m_global, M_new)
 
+        # ── 8. Adaptive gain update ─────────────────────────────────────────
         if cbf_enabled:
             e = max(0.0, TARGET_MARGIN - M_new)
             if e > DEADZONE:
                 theta += ALPHA_THETA * e - BETA_THETA * (theta - THETA_0)
                 theta = max(THETA_MIN, min(THETA_MAX, theta))
 
+        # ── 9. Logging ──────────────────────────────────────────────────────
+        phi_t = compute_phi(x, input_data)
+        phi_traj.append(round(phi_t, 6))
         theta_traj.append(theta)
+
         trajectory.append({
             "t": t,
             "C": round(x[0], 6),
@@ -211,22 +320,31 @@ def simulate_cbf(
             "S": round(x[2], 6),
             "M": round(M_new, 6),
             "theta": round(theta, 6),
+            "phi": round(phi_t, 6),
+            "basin": identify_basin(x),
             "u_safe": [round(u, 6) for u in u_safe],
+            "u_basin": [round(u, 6) for u in u_basin],
         })
 
     if violation_start is not None:
         recovery_times.append(steps - violation_start)
 
     avg_recovery = sum(recovery_times) / len(recovery_times) if recovery_times else 0.0
+    phi_final = phi_traj[-1] if phi_traj else phi_initial
+    directional_gain = round(phi_initial - phi_final, 6)
 
     return {
         "trajectory": trajectory,
         "theta_trajectory": theta_traj,
+        "phi_trajectory": phi_traj,
         "min_M": round(min_m_global, 6),
         "safety_violated": safety_violated,
         "time_below_safe": time_below_safe,
         "recovery_times": recovery_times,
         "avg_recovery_time": round(avg_recovery, 3),
+        "phi_initial": round(phi_initial, 6),
+        "phi_final": round(phi_final, 6),
+        "directional_gain": directional_gain,
         "steps": steps,
         "dt": dt,
         "seed": seed,
@@ -241,9 +359,10 @@ def simulate_cbf_comparison(
     dt: float = DT_DEFAULT,
     seed: int = 42,
     alpha: float = 0.5,
+    input_data: dict | None = None,
 ) -> dict:
-    governed = simulate_cbf(steps=steps, dt=dt, seed=seed, alpha=alpha, cbf_enabled=True)
-    ungoverned = simulate_cbf(steps=steps, dt=dt, seed=seed, alpha=alpha, cbf_enabled=False)
+    governed = simulate_cbf(steps=steps, dt=dt, seed=seed, alpha=alpha, cbf_enabled=True, input_data=input_data)
+    ungoverned = simulate_cbf(steps=steps, dt=dt, seed=seed, alpha=alpha, cbf_enabled=False, input_data=input_data)
     return {
         "governed": governed,
         "ungoverned": ungoverned,

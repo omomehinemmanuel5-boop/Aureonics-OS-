@@ -1,0 +1,303 @@
+🧾 **FINAL GOAL DIRECTIVE — AUREONICS-OS (REPLIT)**
+
+We already have a working FastAPI-based simulation with a Control Barrier Function (CBF) enforcing safety.
+
+The goal is to upgrade it into a **fully stable, adaptive, basin-directed dynamical system** **without breaking existing behavior**.
+
+---
+
+# 🎯 CORE OBJECTIVE
+
+Transform the system into:
+
+**A CBF-constrained, adaptively stabilized, basin-directed dynamical system on the simplex**
+
+This means:
+
+* Always safe (no collapse)
+* Adaptive to disturbances (θ responds)
+* Convergent (moves toward meaningful structure)
+* Geometrically consistent (state remains on simplex)
+* Input-driven (external signals shape behavior)
+
+---
+
+# 🔒 1. PRESERVE EXISTING SYSTEM (DO NOT BREAK)
+
+Before making changes:
+
+Locate the **simulation step function** and confirm:
+
+* CBF enforcement: ( x_i ≥ 0.05 )
+* Adaptive gain ( θ(t) ) exists
+* Replicator or intrinsic dynamics exist
+
+❗ DO NOT:
+
+* Rewrite core system
+* Remove existing dynamics
+* Replace θ with constant
+* Weaken CBF enforcement
+
+---
+
+# ⚙️ 2. TARGET DYNAMICS
+
+dx =
+replicator_dynamics
+
+* θ(t) * governor_force
+* u_basin
+
+CBF enforcement is always applied **last**.
+
+---
+
+# 🧠 3. BASIN INTELLIGENCE LAYER
+
+## 3.1 Potential Function
+
+```python
+def compute_phi(x, input_data):
+    ccp = compute_ccp(x, input_data)
+    iec = compute_iec(x, input_data)
+    iec_target = 1.0 / 3.0
+    w1 = 1.0
+    w2 = 0.5
+    return -w1 * ccp + w2 * (iec - iec_target) ** 2
+```
+
+---
+
+## 3.2 Basin Force (simplex-consistent)
+
+```python
+def compute_basin_force(x, input_data):
+    eps = 1e-4
+    grad = []
+
+    for i in range(len(x)):
+        x_up = x.copy()
+        x_down = x.copy()
+        x_up[i] += eps
+        x_down[i] -= eps
+
+        phi_up = compute_phi(x_up, input_data)
+        phi_down = compute_phi(x_down, input_data)
+
+        dphi = (phi_up - phi_down) / (2 * eps)
+        grad.append(dphi)
+
+    mean_grad = sum(grad) / len(grad)
+    lambda_gain = 0.2
+
+    force = [-(g - mean_grad) * lambda_gain for g in grad]
+    return cap_force(force)
+```
+
+---
+
+# ⚖️ 4. FORCE CAPPING
+
+```python
+def cap_force(v, max_norm=1.0):
+    norm = sum(abs(x) for x in v)
+    if norm > max_norm and norm > 0:
+        scale = max_norm / norm
+        return [x * scale for x in v]
+    return v
+```
+
+---
+
+# ⚠️ 5. SAFETY INTERACTION RULE
+
+```python
+if stability_margin(x) < 0.1:
+    basin_force = [0.0 for _ in x]
+```
+
+---
+
+# 🔒 6. DESCENT GUARD
+
+```python
+phi_prev = compute_phi(x, input_data)
+phi_curr = compute_phi(x_candidate, input_data)
+
+if phi_curr > phi_prev:
+    basin_force = [0.5 * u for u in basin_force]
+```
+
+---
+
+# 🔺 7. SIMPLEX PROJECTION (MANDATORY)
+
+(keep your existing projection function — do not use naive clipping)
+
+---
+
+# ⚙️ 8. FULL UPDATE STEP
+
+(keep structure exactly as defined earlier with projection at the end)
+
+---
+
+# 🧠 9. INPUT MUST DRIVE SYSTEM
+
+Ensure CCP and IEC depend meaningfully on input_data.
+
+---
+
+# 📊 10. LOGGING
+
+Track:
+
+* Φ(t)
+* θ(t)
+* stability margin
+
+---
+
+# 📈 11. DASHBOARD EXTENSION (MINIMAL BUT MODERN)
+
+Do NOT rebuild the UI completely.
+
+Instead, refine the existing dashboard into a **clean, modern research interface**.
+
+## Required improvements
+
+### A. Layout clarity
+
+Organize dashboard into clear sections:
+
+* Simulation Controls
+* Constitutional State (C, R, S)
+* Safety Monitor (CBF + margin)
+* Basin Intelligence
+* Metrics & Outputs
+
+---
+
+### B. Visual hierarchy
+
+Improve:
+
+* spacing between sections
+* readable typography
+* consistent panel/card structure
+* clearer labels and units
+
+---
+
+### C. Key visual upgrades
+
+Add:
+
+#### 1. Primary state panel
+
+* live display of C, R, S
+* stability margin M
+* color-coded safety status
+
+#### 2. Basin intelligence display
+
+* dominant basin badge:
+
+  * Analytical
+  * Collaborative
+  * Exploratory
+  * Balanced
+* simple timeline or strip showing basin transitions
+
+#### 3. Metric charts
+
+Add clean plots for:
+
+* Φ(t)
+* θ(t)
+* Stability margin M(t)
+
+---
+
+### D. Styling direction
+
+Keep it:
+
+* minimal
+* modern
+* scientific
+* not flashy
+* dark or neutral theme is acceptable
+
+---
+
+### E. Interaction improvements
+
+Ensure:
+
+* controls are responsive
+* simulation updates smoothly
+* results are clearly separated from inputs
+
+---
+
+# 🧪 12. VALIDATION TEST
+
+Run adversarial case:
+
+Expected:
+
+* θ rises under stress
+* CBF prevents collapse
+* basin redirects toward interior
+
+---
+
+# 📊 13. DIRECTIONAL METRIC
+
+directional_gain = phi_initial - phi_final
+Must be positive.
+
+---
+
+# 🚫 14. HARD CONSTRAINTS
+
+Do NOT:
+
+* break API
+* duplicate simulation engines
+* remove safety logic
+* use naive clipping
+* redesign UI from scratch
+
+---
+
+# 🎯 FINAL SUCCESS CONDITIONS
+
+System must:
+
+* remain safe
+* remain on simplex
+* adapt via θ
+* converge via Φ
+* show meaningful basin behavior
+* present results clearly in UI
+
+---
+
+# 🧠 FINAL RESULT
+
+A system that is:
+
+**safe + adaptive + meaning-directed + visually interpretable**
+
+---
+
+# ⚡ FINAL INSTRUCTION
+
+Make precise additions only.
+
+Preserve working behavior.
+
+Upgrade correctness, stability, and clarity.

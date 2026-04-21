@@ -1,6 +1,6 @@
 # Aureonics Governor Engine
 
-A research-grade prototype of a **constitutional governor engine** implementing the "Aureonics triad" — **Continuity**, **Reciprocity**, **Sovereignty** — with Control Barrier Function (CBF) safety guarantees and an adaptive governor that maintains pillar health under stochastic forcing.
+A research-grade prototype of a **constitutional governor engine** implementing the "Aureonics triad" — **Continuity (C)**, **Reciprocity (R)**, **Sovereignty (S)** — with Control Barrier Function (CBF) safety guarantees, an adaptive governor, and a basin intelligence layer that shapes convergence toward meaningful interior structure.
 
 ## Technologies
 
@@ -21,59 +21,80 @@ app/
     cbf_routes.py           # CBF safety endpoints (/cbf/simulate, /cbf/compare, /cbf/multi_seed)
   models/                   # SQLAlchemy entities and Pydantic schemas
   services/
-    cbf_service.py          # CBF safety filter with discrete-time QP guarantee
-    simulation_service.py   # Adaptive governor with preemptive buffer
+    cbf_service.py          # CBF + adaptive governor + basin intelligence
+    simulation_service.py   # Legacy adaptive governor with preemptive buffer
     governor_service.py     # Base governor engine
     metrics_service.py      # Triad metric computation
   static/
-    index.html              # Full dashboard (Chart.js, dark GitHub theme)
+    index.html              # Full dashboard (Chart.js, dark scientific theme)
   database.py               # SQLAlchemy engine and session setup
   main.py                   # Application entry point, mounts static files
 ```
 
 ## Running the Application
 
-The app runs on port 5000 via the "Start application" workflow:
 ```
 uvicorn app.main:app --host 0.0.0.0 --port 5000
 ```
 
-The dashboard is served at `/` and `/dashboard`.
+Dashboard served at `/` and `/dashboard`.
+
+## Full Update Step (per simulation tick)
+
+```
+dx = replicator_dynamics + θ(t) * governor_force + u_basin
+CBF enforcement applied LAST
+```
+
+1. **Intrinsic dynamics** — replicator + bounded mass-conserving Gaussian noise
+2. **Governor force** — G_i = k(φ_i − φ̄), scaled by adaptive gain θ(t)
+3. **Basin force** — gradient descent on Φ, simplex-projected, force-capped
+   - Safety interaction rule: basin force zeroed when min(x) < 0.1
+   - Descent guard: basin force halved if Φ would increase
+4. **CBF filter** — discrete-time QP guarantees min(x_next_i) ≥ τ_cbf exactly
+5. **Simplex projection** — mass-conserving normalization
 
 ## Key Features
 
-### Aureonics Triad
-- **Continuity (C)**, **Reciprocity (R)**, **Sovereignty (S)** on the probability simplex
-- Mass-conserving replicator dynamics with bounded stochastic noise
+### Safety
+- **Guarantee:** min(C, R, S) ≥ τ_cbf = 0.05 for all t, all seeds
+- **Method:** Exact discrete-time CBF (analytic QP solver for n=3)
+- Validated over 8 random seeds: `all_seeds_safe = True`
 
-### Adaptive Governor (Section 11)
-- Pillar deviation φ_i = max(0, τ - x_i), mass-conserving G_i = k(φ_i - φ̄)
-- Preemptive buffer δ=0.12 activates governor before τ breach
-- Achieves: time-below-threshold ≤ 5, avg recovery time ≤ 2
+### Basin Intelligence Layer
+- **Φ(x) = −w₁·CCP + w₂·(IEC − IEC_target)²** (lower = better)
+- **CCP** (Constitutional Coherence Profile): 1 at centroid, 0 at corners
+- **IEC** (Internal Energy Coherence): 3·min(x), measures distance from collapse
+- Basin force = −∇Φ projected onto tangent plane of simplex, λ=0.2, capped at 1.0
+- **Directional gain** = Φ_initial − Φ_final > 0 confirms convergence
 
-### CBF Safety Module (`app/services/cbf_service.py`)
-- **Safety guarantee:** min(C, R, S) ≥ τ_cbf = 0.05 for all t
-- **Algorithm:** Discrete-time CBF (exact QP projection), analytically solved for n=3
-- Handles mass conservation exactly without a numerical QP solver
-- Validated over 8 random seeds — all_seeds_safe = True
-- Structured for future upgrade to full Quadratic Program controller
+### Adaptive Governor
+- Preemptive buffer δ=0.12 activates before τ breach
+- θ rises under stress, decays toward θ₀=1.0 when stable
+- θ ∈ [0.1, 5.0] bounded
 
-### Dashboard (`/dashboard`)
-- Pillar values chart (C, R, S) with safety floor line
-- Adaptive gain θ(t) chart
-- Stability margin M(t) = min(C, R, S) chart
-- Multi-seed safety test panel (8 seeds, pass/fail cards)
-- Interactive controls: seed, steps, alpha, dt, CBF on/off toggle
+### Dashboard Sections
+| Section | Contents |
+|---------|----------|
+| Simulation Controls | seed, steps, alpha, dt, CBF toggle |
+| Basin Intelligence (sidebar) | external signal, IEC target inputs |
+| Constitutional State | min M, final θ, current basin badge |
+| Safety Monitor | violations, recovery time, CBF HOLDS/BROKEN |
+| Basin Intelligence | Φ_init, Φ_final, directional gain, basin timeline strip |
+| Metrics & Outputs | Pillar chart (C/R/S), θ(t), M(t), Φ(t) charts |
+| Multi-Seed Test | 8-seed grid with safety + directional gain per seed |
 
 ## CBF Parameters
 | Parameter | Value | Description |
 |-----------|-------|-------------|
 | τ_cbf | 0.05 | Hard safety floor |
-| γ | 5.0 | CBF decay rate |
+| TAU_GOV | 0.25 | Governor activation threshold |
 | θ₀ | 1.0 | Baseline adaptive gain |
 | θ ∈ | [0.1, 5.0] | Gain bounds |
 | α_θ | 0.8 | Gain increase rate |
 | β_θ | 0.05 | Gain decay rate |
+| λ_basin | 0.2 | Basin force gain |
+| margin cutoff | 0.1 | Basin force zeroed below this |
 | noise σ | 0.08 | Stochastic forcing std |
 | noise clip | 0.15 | Noise saturation bound |
 
