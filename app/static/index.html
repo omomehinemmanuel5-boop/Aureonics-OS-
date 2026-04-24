@@ -218,6 +218,7 @@
       grid-template-columns: 1fr 1fr;
       gap: 12px;
     }
+    .charts-grid.single-col { grid-template-columns: 1fr; }
     .chart-card {
       background: var(--surface); border: 1px solid var(--border);
       border-radius: 9px; padding: 16px;
@@ -229,6 +230,124 @@
     .legend-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
     .legend-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--muted); }
     .legend-dot { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+
+    /* ════════════════════════ AUDIT PANELS ════════════════════════ */
+    .panel-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .pillars-live {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .pillar-chip {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 10px;
+    }
+    .chip-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+    .chip-value { font-size: 16px; font-weight: 700; margin-top: 2px; }
+    .flag-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .flag-chip {
+      font-size: 11px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      padding: 4px 9px;
+      color: var(--muted);
+      background: rgba(139,148,158,.08);
+    }
+    .flag-chip.on {
+      color: var(--green);
+      border-color: var(--green);
+      background: rgba(63,185,80,.12);
+    }
+    .flag-chip.warn {
+      color: var(--yellow);
+      border-color: var(--yellow);
+      background: rgba(210,153,34,.12);
+    }
+    .response-block {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 8px;
+      min-height: 84px;
+      max-height: 200px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-size: 12px;
+    }
+    .input-row { display: flex; gap: 8px; margin-top: 8px; }
+    .input-row input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--text);
+      padding: 8px 10px;
+      font-size: 13px;
+      outline: none;
+    }
+    .input-row input:focus { border-color: var(--accent); }
+    .small-btn {
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 11px;
+      cursor: pointer;
+    }
+    .small-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .history-tools {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      gap: 8px;
+      margin: 8px 0 10px;
+    }
+    .history-tools select, .history-tools input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--text);
+      padding: 7px 9px;
+      font-size: 12px;
+      outline: none;
+      min-width: 0;
+    }
+    .history-list {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .history-item {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      background: var(--surface2);
+    }
+    .history-item:last-child { border-bottom: 0; }
+    .history-item:hover { background: rgba(88,166,255,.08); }
+    .history-item.active { background: rgba(88,166,255,.12); border-left: 2px solid var(--accent); padding-left: 8px; }
+    .history-meta { font-size: 11px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+    .history-details {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface2);
+      padding: 10px;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+    .projection-pillars { margin-top: 7px; font-size: 12px; color: var(--yellow); }
 
     /* ════════════════════════ SEED GRID ════════════════════════ */
     .seed-grid {
@@ -284,6 +403,9 @@
       .seed-grid {
         grid-template-columns: 1fr 1fr;
       }
+      .panel-grid { grid-template-columns: 1fr; }
+      .pillars-live { grid-template-columns: 1fr; }
+      .history-tools { grid-template-columns: 1fr 1fr; }
     }
 
     @media (max-width: 400px) {
@@ -388,6 +510,21 @@
       <div class="main-section-title">Constitutional State</div>
       <div class="stats-row">
         <div class="stat-card">
+          <div class="label">Live C</div>
+          <div class="value val-blue" id="statLiveC">—</div>
+          <div class="sub">continuity</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Live R</div>
+          <div class="value val-green" id="statLiveR">—</div>
+          <div class="sub">reciprocity</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Live S</div>
+          <div class="value val-yellow" id="statLiveS">—</div>
+          <div class="sub">sovereignty</div>
+        </div>
+        <div class="stat-card">
           <div class="label">Minimum M</div>
           <div class="value val-muted" id="statMinM">—</div>
           <div class="sub">min(C,R,S) · floor 0.05</div>
@@ -398,11 +535,74 @@
           <div class="sub">adaptive gain at end</div>
         </div>
         <div class="stat-card">
+          <div class="label">adv_gain</div>
+          <div class="value val-muted" id="statAdvGain">—</div>
+          <div class="sub">latest /praxis/run gain</div>
+        </div>
+        <div class="stat-card">
           <div class="label">Current Basin</div>
           <div id="statBasin" style="margin-top:6px">
             <span class="basin-badge Balanced">● Balanced</span>
           </div>
           <div class="sub" style="margin-top:6px">final dominant pillar</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Constitutional</div>
+          <div class="value val-muted" id="statConstitutional">—</div>
+          <div class="sub">latest receipt state</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Recovering</div>
+          <div class="value val-muted" id="statRecovering">—</div>
+          <div class="sub">recovery lock state</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Response Analysis -->
+    <div class="main-section">
+      <div class="main-section-title">Response Analysis</div>
+      <div class="panel-grid">
+        <div class="chart-card">
+          <div class="chart-title">Run Sovereign Prompt</div>
+          <div class="chart-sub">Uses /praxis/run directly. No backend changes.</div>
+          <div class="input-row">
+            <input id="praxisPrompt" placeholder="Enter prompt for sovereign analysis" />
+            <button class="small-btn" onclick="runPraxis()">Run</button>
+          </div>
+          <div class="flag-row">
+            <span class="flag-chip" id="alignmentFlag">Alignment: —</span>
+            <span class="flag-chip" id="projectionFlag">Projection: —</span>
+          </div>
+          <div class="chart-sub" style="margin-top:10px">Prompt</div>
+          <div class="response-block" id="promptView">—</div>
+          <div class="chart-sub" style="margin-top:10px">Response</div>
+          <div class="response-block" id="responseView">—</div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Live Runtime Signals</div>
+          <div class="chart-sub">Real-time from latest receipt + latest /praxis/run.</div>
+          <div class="pillars-live">
+            <div class="pillar-chip">
+              <div class="chip-label">C</div>
+              <div class="chip-value val-blue" id="liveCChip">—</div>
+            </div>
+            <div class="pillar-chip">
+              <div class="chip-label">R</div>
+              <div class="chip-value val-green" id="liveRChip">—</div>
+            </div>
+            <div class="pillar-chip">
+              <div class="chip-label">S</div>
+              <div class="chip-value val-yellow" id="liveSChip">—</div>
+            </div>
+          </div>
+          <div class="flag-row">
+            <span class="flag-chip" id="constitutionalFlag">constitutional: —</span>
+            <span class="flag-chip" id="recoveringFlag">recovering: —</span>
+            <span class="flag-chip" id="marginFlag">M: —</span>
+            <span class="flag-chip" id="advFlag">adv_gain: —</span>
+          </div>
+          <div class="projection-pillars" id="projectionPillars">Projection details: none.</div>
         </div>
       </div>
     </div>
@@ -497,6 +697,45 @@
           <canvas id="phiChart" height="70"></canvas>
         </div>
 
+        <div class="chart-card wide">
+          <div class="chart-title">Receipt Time Series — Pillars</div>
+          <div class="chart-sub">Latest /praxis receipts over time (C, R, S).</div>
+          <canvas id="receiptPillarsChart" height="70"></canvas>
+        </div>
+
+        <div class="chart-card wide">
+          <div class="chart-title">Receipt Time Series — adv_gain proxy</div>
+          <div class="chart-sub">Computed as ΔS between consecutive receipts (proxy until backend exposes historical adv_gain).</div>
+          <canvas id="receiptAdvChart" height="70"></canvas>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Receipt History -->
+    <div class="main-section">
+      <div class="main-section-title">Receipt History Viewer</div>
+      <div class="chart-card">
+        <div class="chart-title">/praxis Receipt Inspector</div>
+        <div class="chart-sub">Filter constitutional/recovering/model and inspect individual entries.</div>
+        <div class="history-tools">
+          <select id="filterConstitutional" onchange="renderReceiptHistory()">
+            <option value="all">Constitutional: all</option>
+            <option value="yes">Constitutional: true</option>
+            <option value="no">Constitutional: false</option>
+          </select>
+          <select id="filterRecovering" onchange="renderReceiptHistory()">
+            <option value="all">Recovering: all</option>
+            <option value="yes">Recovering: true</option>
+            <option value="no">Recovering: false</option>
+          </select>
+          <input id="filterModel" placeholder="Filter model/version text" oninput="renderReceiptHistory()" />
+          <button class="small-btn" onclick="loadPraxisReceipts()">Refresh</button>
+        </div>
+        <div class="history-list" id="receiptList">
+          <div class="history-item">No receipts loaded yet.</div>
+        </div>
+        <div class="history-details" id="receiptDetails">Select a receipt to inspect.</div>
       </div>
     </div>
 
@@ -513,17 +752,25 @@
 <script>
   let charts = {};
   let cbfOn = true;
+  let receiptCache = [];
+  let selectedReceiptId = null;
+  let latestPraxisRun = null;
+  let praxisPollTimer = null;
+
+  function el(id) {
+    return document.getElementById(id);
+  }
 
   /* ── Sidebar (mobile) ── */
   function toggleSidebar() {
-    const s = document.getElementById('sidebar');
-    const ov = document.getElementById('overlay');
+    const s = el('sidebar');
+    const ov = el('overlay');
     s.classList.toggle('open');
     ov.classList.toggle('show', s.classList.contains('open'));
   }
   function closeSidebar() {
-    document.getElementById('sidebar').classList.remove('open');
-    document.getElementById('overlay').classList.remove('show');
+    el('sidebar').classList.remove('open');
+    el('overlay').classList.remove('show');
   }
   function runAndClose() { closeSidebar(); runSimulation(); }
   function runMultiSeedAndClose() { closeSidebar(); runMultiSeed(); }
@@ -531,7 +778,7 @@
   /* ── CBF toggle ── */
   function toggleCBF() {
     cbfOn = !cbfOn;
-    document.getElementById('cbfToggle').classList.toggle('on', cbfOn);
+    el('cbfToggle').classList.toggle('on', cbfOn);
   }
 
   const BASIN_COLORS = {
@@ -540,20 +787,21 @@
   };
 
   function setStat(id, val, cls) {
-    const el = document.getElementById(id);
-    el.textContent = val;
-    el.className = 'value ' + (cls || '');
+    const node = el(id);
+    node.textContent = val;
+    node.className = 'value ' + (cls || '');
   }
 
   function setBadge(state) {
-    const badge = document.getElementById('safetyBadge');
-    document.getElementById('safetyText').textContent =
+    const badge = el('safetyBadge');
+    el('safetyText').textContent =
       state === 'safe' ? 'Safety Guaranteed'
       : state === 'violated' ? 'Safety Violated' : 'Ready';
     badge.className = 'safety-badge ' + state;
   }
 
   function toXY(arr) { return arr.map((v, i) => ({ x: i, y: v })); }
+  function boolPill(v) { return v ? 'true' : 'false'; }
 
   function safeLinePlugin() {
     return {
@@ -570,7 +818,7 @@
   }
 
   function makeChart(id, datasets, yLabel, minY, maxY, safety = false) {
-    const ctx = document.getElementById(id).getContext('2d');
+    const ctx = el(id).getContext('2d');
     if (charts[id]) charts[id].destroy();
     const allData = datasets.flatMap(d => d.data.map(p => p.y));
     const cMin = minY !== undefined ? minY : Math.min(...allData) - 0.02;
@@ -610,7 +858,7 @@
   }
 
   function renderBasinStrip(basins) {
-    const strip = document.getElementById('basinStrip');
+    const strip = el('basinStrip');
     strip.innerHTML = '';
     for (const b of basins) {
       const seg = document.createElement('div');
@@ -619,22 +867,190 @@
       seg.title = b;
       strip.appendChild(seg);
     }
-    document.getElementById('basinStripWrap').style.display = '';
+    el('basinStripWrap').style.display = '';
   }
 
   function updateBasinBadge(basin) {
-    document.getElementById('statBasin').innerHTML =
+    el('statBasin').innerHTML =
       `<span class="basin-badge ${basin}">● ${basin}</span>`;
+  }
+
+  function computeAlignmentStatus(prompt, response) {
+    const p = (prompt || '').toLowerCase().split(/\W+/).filter(Boolean);
+    const r = (response || '').toLowerCase().split(/\W+/).filter(Boolean);
+    if (!p.length || !r.length) return { label: 'unknown', cls: '' };
+    const setP = new Set(p);
+    const overlap = r.filter(t => setP.has(t)).length;
+    const ratio = overlap / r.length;
+    if (ratio >= 0.08 && ratio <= 0.65) return { label: 'aligned', cls: 'on' };
+    if (ratio < 0.08) return { label: 'low-context', cls: 'warn' };
+    return { label: 'echo-risk', cls: 'warn' };
+  }
+
+  function updateLiveCardsFromReceipt(receipt) {
+    if (!receipt) return;
+    const C = receipt.pillar_snapshot?.C;
+    const R = receipt.pillar_snapshot?.R;
+    const S = receipt.pillar_snapshot?.S;
+    if ([C, R, S].every(v => typeof v === 'number')) {
+      el('liveCChip').textContent = C.toFixed(4);
+      el('liveRChip').textContent = R.toFixed(4);
+      el('liveSChip').textContent = S.toFixed(4);
+      setStat('statLiveC', C.toFixed(4), 'val-blue');
+      setStat('statLiveR', R.toFixed(4), 'val-green');
+      setStat('statLiveS', S.toFixed(4), 'val-yellow');
+    }
+    if (typeof receipt.stability_margin === 'number') {
+      el('marginFlag').textContent = `M: ${receipt.stability_margin.toFixed(4)}`;
+    }
+    el('constitutionalFlag').textContent = `constitutional: ${boolPill(receipt.constitutional)}`;
+    el('recoveringFlag').textContent = `recovering: ${boolPill(receipt.recovering)}`;
+    setStat('statConstitutional', receipt.constitutional ? 'TRUE' : 'FALSE', receipt.constitutional ? 'val-green' : 'val-red');
+    setStat('statRecovering', receipt.recovering ? 'TRUE' : 'FALSE', receipt.recovering ? 'val-yellow' : 'val-muted');
+    el('constitutionalFlag').className = 'flag-chip ' + (receipt.constitutional ? 'on' : 'warn');
+    el('recoveringFlag').className = 'flag-chip ' + (receipt.recovering ? 'warn' : '');
+    el('marginFlag').className = 'flag-chip ' + ((receipt.stability_margin || 0) >= 0.05 ? 'on' : 'warn');
+  }
+
+  function drawReceiptCharts(receipts) {
+    const ordered = [...receipts].reverse();
+    if (!ordered.length) return;
+    const c = ordered.map(r => r.pillar_snapshot?.C || 0);
+    const r = ordered.map(x => x.pillar_snapshot?.R || 0);
+    const s = ordered.map(x => x.pillar_snapshot?.S || 0);
+    makeChart('receiptPillarsChart', [
+      { label: 'C', data: toXY(c), borderColor: '#58a6ff' },
+      { label: 'R', data: toXY(r), borderColor: '#3fb950' },
+      { label: 'S', data: toXY(s), borderColor: '#d29922' },
+    ], 'pillar value', 0, 1.02, true);
+    const advProxy = s.map((val, i) => i === 0 ? 0 : val - s[i - 1]);
+    makeChart('receiptAdvChart', [
+      { label: 'adv_gain proxy', data: toXY(advProxy), borderColor: '#bc8cff', borderWidth: 2 }
+    ], 'ΔS');
+  }
+
+  async function loadPraxisReceipts() {
+    try {
+      const res = await fetch('/praxis');
+      const data = await res.json();
+      receiptCache = data.receipts || [];
+      if (receiptCache.length) {
+        updateLiveCardsFromReceipt(receiptCache[0]);
+        drawReceiptCharts(receiptCache);
+      }
+      renderReceiptHistory();
+    } catch (e) {
+      el('receiptList').innerHTML = `<div class="history-item">Failed to load /praxis: ${e}</div>`;
+    }
+  }
+
+  function renderReceiptHistory() {
+    const constitutional = el('filterConstitutional').value;
+    const recovering = el('filterRecovering').value;
+    const modelText = el('filterModel').value.trim().toLowerCase();
+    let filtered = receiptCache.filter(item => {
+      if (constitutional === 'yes' && !item.constitutional) return false;
+      if (constitutional === 'no' && item.constitutional) return false;
+      if (recovering === 'yes' && !item.recovering) return false;
+      if (recovering === 'no' && item.recovering) return false;
+      const modelBlob = `${item.model || ''} ${item.version || ''}`.toLowerCase();
+      if (modelText && !modelBlob.includes(modelText)) return false;
+      return true;
+    });
+    const list = el('receiptList');
+    if (!filtered.length) {
+      list.innerHTML = '<div class="history-item">No receipts match current filters.</div>';
+      return;
+    }
+    list.innerHTML = filtered.map(item => `
+      <div class="history-item ${item.id === selectedReceiptId ? 'active' : ''}" onclick="inspectReceipt(${item.id})">
+        <div><strong>#${item.id}</strong> · M=${(item.stability_margin || 0).toFixed(4)}</div>
+        <div class="history-meta">
+          <span>${item.timestamp_iso || '—'}</span>
+          <span>${item.constitutional ? 'constitutional' : 'refused'} · ${item.recovering ? 'recovering' : 'steady'}</span>
+        </div>
+      </div>
+    `).join('');
+    const hasSelected = filtered.some(item => item.id === selectedReceiptId);
+    if ((!selectedReceiptId || !hasSelected) && filtered.length) {
+      inspectReceipt(filtered[0].id);
+    }
+  }
+
+  function inspectReceipt(id) {
+    selectedReceiptId = id;
+    const item = receiptCache.find(r => r.id === id);
+    if (!item) return;
+    renderReceiptHistory();
+    el('receiptDetails').innerHTML = `
+      <div><strong>Receipt #${item.id}</strong> · ${item.timestamp_iso || '—'}</div>
+      <div>C=${(item.pillar_snapshot?.C || 0).toFixed(6)} | R=${(item.pillar_snapshot?.R || 0).toFixed(6)} | S=${(item.pillar_snapshot?.S || 0).toFixed(6)}</div>
+      <div>Stability Margin: ${(item.stability_margin || 0).toFixed(6)}</div>
+      <div>Constitutional: ${boolPill(item.constitutional)} · Recovering: ${boolPill(item.recovering)}</div>
+      <div>Model: ${item.model || '—'} · Version: ${item.version || '—'}</div>
+      <div style="color:var(--muted);margin-top:6px">Projection trigger and prompt/response are only available on live /praxis/run results.</div>
+    `;
+  }
+
+  async function runPraxis() {
+    const prompt = el('praxisPrompt').value.trim();
+    if (!prompt) return;
+    el('promptView').textContent = prompt;
+    el('responseView').textContent = 'Running...';
+    try {
+      const res = await fetch('/praxis/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        el('responseView').textContent = JSON.stringify(data, null, 2);
+        return;
+      }
+      latestPraxisRun = data;
+      el('responseView').textContent = data.response || '—';
+      const align = computeAlignmentStatus(prompt, data.response || '');
+      const alignmentFlag = el('alignmentFlag');
+      alignmentFlag.textContent = `Alignment: ${align.label}`;
+      alignmentFlag.className = 'flag-chip ' + align.cls;
+      const projected = !!data.receipt?.safety_projection_triggered;
+      const projectionFlag = el('projectionFlag');
+      projectionFlag.textContent = `Projection: ${projected ? 'triggered' : 'not triggered'}`;
+      projectionFlag.className = 'flag-chip ' + (projected ? 'warn' : 'on');
+      const adv = typeof data.adv_gain === 'number' ? data.adv_gain : null;
+      if (adv !== null) {
+        setStat('statAdvGain', adv.toFixed(4), adv >= 0.005 ? 'val-green' : 'val-yellow');
+        el('advFlag').textContent = `adv_gain: ${adv.toFixed(4)}`;
+        el('advFlag').className = 'flag-chip ' + (adv >= 0.005 ? 'on' : 'warn');
+      }
+      const state = data.state || {};
+      if (typeof state.C === 'number' && typeof state.R === 'number' && typeof state.S === 'number') {
+        updateLiveCardsFromReceipt({
+          pillar_snapshot: { C: state.C, R: state.R, S: state.S },
+          stability_margin: Math.min(state.C, state.R, state.S),
+          constitutional: (Math.min(state.C, state.R, state.S) >= 0.05),
+          recovering: !!data.receipt?.recovering,
+        });
+      }
+      const weakest = Object.entries(state).sort((a, b) => a[1] - b[1])[0]?.[0] || '—';
+      el('projectionPillars').textContent =
+        projected ? `Projection details: trigger detected, weakest affected pillar was ${weakest}.`
+                  : 'Projection details: no trigger in latest run.';
+      await loadPraxisReceipts();
+    } catch (e) {
+      el('responseView').textContent = 'Run failed: ' + e;
+    }
   }
 
   /* ── Run single simulation ── */
   async function runSimulation() {
-    const seed = document.getElementById('seed').value;
-    const steps = document.getElementById('steps').value;
-    const alpha = document.getElementById('alpha').value;
-    const dt = document.getElementById('dt').value;
-    const signal = document.getElementById('signal').value;
-    const iecTarget = document.getElementById('iecTarget').value;
+    const seed = el('seed').value;
+    const steps = el('steps').value;
+    const alpha = el('alpha').value;
+    const dt = el('dt').value;
+    const signal = el('signal').value;
+    const iecTarget = el('iecTarget').value;
 
     setBadge('idle');
     setStat('statMinM', '…', 'val-muted');
@@ -686,16 +1102,16 @@
 
   /* ── Multi-seed governed vs ungoverned ── */
   async function runMultiSeed() {
-    const steps = document.getElementById('steps').value;
-    const alpha  = document.getElementById('alpha').value;
-    const dt     = document.getElementById('dt').value;
-    const signal = document.getElementById('signal').value;
-    const iecTarget = document.getElementById('iecTarget').value;
+    const steps = el('steps').value;
+    const alpha  = el('alpha').value;
+    const dt     = el('dt').value;
+    const signal = el('signal').value;
+    const iecTarget = el('iecTarget').value;
 
-    document.getElementById('seedSection').style.display = '';
-    document.getElementById('seedGrid').innerHTML =
+    el('seedSection').style.display = '';
+    el('seedGrid').innerHTML =
       '<div style="color:var(--muted);display:flex;align-items:center;gap:8px;padding:8px 0"><div class="spinner"></div>Running 8 seeds × 2 modes…</div>';
-    document.getElementById('seedSummary').innerHTML = '';
+    el('seedSummary').innerHTML = '';
 
     let data;
     try {
@@ -704,7 +1120,7 @@
     } catch (e) { alert('Request failed: ' + e); return; }
 
     /* Summary banners */
-    const sumEl = document.getElementById('seedSummary');
+    const sumEl = el('seedSummary');
     const govOk = data.all_governed_safe;
     const unvFail = data.all_ungoverned_violated;
     sumEl.innerHTML =
@@ -712,7 +1128,7 @@
       `<span style="color:${unvFail ? 'var(--red)' : 'var(--yellow)'};font-weight:600">${unvFail ? '✗' : '⚠'} Ungoverned: ${unvFail ? 'all 8 collapse (expected)' : 'some still safe'}</span>`;
 
     /* Seed cards */
-    const grid = document.getElementById('seedGrid');
+    const grid = el('seedGrid');
     grid.innerHTML = '';
     for (const r of data.results) {
       const gOk  = !r.governed.safety_violated;
@@ -743,10 +1159,18 @@
     }
 
     /* Scroll to results on mobile */
-    document.getElementById('seedSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el('seedSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  window.addEventListener('load', () => runSimulation());
+  function initializeDashboard() {
+    runSimulation();
+    loadPraxisReceipts();
+    if (!praxisPollTimer) {
+      praxisPollTimer = setInterval(loadPraxisReceipts, 10000);
+    }
+  }
+
+  window.addEventListener('load', initializeDashboard);
 
   /* Close sidebar on resize to desktop */
   window.addEventListener('resize', () => {
