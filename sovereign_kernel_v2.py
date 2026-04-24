@@ -3,6 +3,7 @@ import json
 import time
 import math
 import os
+import sqlite3
 import urllib.request
 
 class SovereignKernel:
@@ -17,6 +18,54 @@ class SovereignKernel:
         # API config - set GROQ_API_KEY in your environment
         self.api_key = os.environ.get("GROQ_API_KEY", "")
         self.model = "llama-3.1-8b-instant"  # Groq free tier
+
+    def project_to_simplex(self):
+        """
+        L2-optimal projection onto the constitutional simplex.
+        Enforces C >= 0.05, R >= 0.05, S >= 0.05, C + R + S = 1.0.
+        Returns True if projection was applied, False if state was already valid.
+        """
+        floor = 0.05
+        keys = ["C", "R", "S"]
+        x = [self.state[k] for k in keys]
+
+        # Check if projection needed
+        already_valid = (
+            all(v >= floor - 1e-9 for v in x) and
+            abs(sum(x) - 1.0) < 1e-9
+        )
+        if already_valid:
+            return False
+
+        # Step 1: Shift — subtract floor from each dimension
+        y = [v - floor for v in x]           # y sums to 1 - 3*floor = 0.85
+
+        # Step 2: Project y onto simplex where sum(y) = 0.85, y_i >= 0
+        # Standard L2 simplex projection via sorting + thresholding
+        target = 1.0 - 3 * floor             # = 0.85
+        n = len(y)
+        u = sorted(y, reverse=True)
+        cssv = 0.0
+        rho = 0
+        for j in range(n):
+            cssv += u[j]
+            if u[j] - (cssv - target) / (j + 1) > 0:
+                rho = j
+        theta = (sum(u[:rho + 1]) - target) / (rho + 1)
+        y_proj = [max(v - theta, 0.0) for v in y]
+
+        # Step 3: Recover — add floor back
+        x_proj = [v + floor for v in y_proj]
+
+        # Step 4: Normalize to correct floating-point drift
+        total = sum(x_proj)
+        x_proj = [v / total for v in x_proj]
+
+        # Step 5: Write back to state
+        for i, k in enumerate(keys):
+            self.state[k] = round(x_proj[i], 6)
+
+        return True  # projection was applied
 
     # SPAN 1: Semantic Transducer
     def transduce(self, prompt):
@@ -151,7 +200,7 @@ class SovereignKernel:
         return adv_delta
 
     # SPAN 4: Settlement Layer
-    def settle(self, prompt, response, final_state):
+    def settle(self, prompt, response, final_state, safety_projection_triggered=False):
         M = min(final_state.values())
         receipt = {
             "timestamp": time.time(),
@@ -162,12 +211,66 @@ class SovereignKernel:
             "stability_margin": round(M, 6),
             "constitutional": M >= self.tau,
             "recovering": self.is_recovering, # TASK B.3: Add is_recovering field
+            "safety_projection_triggered": safety_projection_triggered,
             "model": self.model,
             "version": "SIA-1.0-Aureonics"
         }
         self.history.append(receipt)
         with open("praxis_audit.jsonl", "a") as f:
             f.write(json.dumps(receipt) + "\n")
+
+        db_path = os.environ.get("DB_PATH", "praxis.db")
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS praxis_receipts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp_iso TEXT,
+                    input_hash TEXT,
+                    output_hash TEXT,
+                    pillar_c REAL,
+                    pillar_r REAL,
+                    pillar_s REAL,
+                    stability_margin REAL,
+                    constitutional INTEGER,
+                    recovering INTEGER,
+                    model TEXT,
+                    version TEXT
+                )
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO praxis_receipts (
+                    timestamp_iso,
+                    input_hash,
+                    output_hash,
+                    pillar_c,
+                    pillar_r,
+                    pillar_s,
+                    stability_margin,
+                    constitutional,
+                    recovering,
+                    model,
+                    version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    receipt["timestamp_iso"],
+                    receipt["input_hash"],
+                    receipt["output_hash"],
+                    receipt["pillar_snapshot"]["C"],
+                    receipt["pillar_snapshot"]["R"],
+                    receipt["pillar_snapshot"]["S"],
+                    receipt["stability_margin"],
+                    1 if receipt["constitutional"] else 0,
+                    1 if receipt["recovering"] else 0,
+                    receipt["model"],
+                    receipt["version"],
+                ),
+            )
+            conn.commit()
         return receipt
 
     # Main Cycle
@@ -202,13 +305,23 @@ class SovereignKernel:
         total = sum(self.state.values())
         self.state = {k: round(v / total, 6) for k, v in self.state.items()}
 
+        # After simplex normalization and before settlement.
+        safety_projection_triggered = self.project_to_simplex()
+        if safety_projection_triggered:
+            print(f"[SAFETY] Simplex projection applied. State: {self.state}")
+
         # TASK B.4: Post-normalization constitutional guard
         M_final = min(self.state.values())
         if M_final < self.tau:
             self.is_recovering = True
             print(f"[GUARD] Post-normalization M={M_final:.4f} below tau. Recovery triggered.")
 
-        receipt = self.settle(user_prompt, llm_response, self.state)
+        receipt = self.settle(
+            user_prompt,
+            llm_response,
+            self.state,
+            safety_projection_triggered=safety_projection_triggered,
+        )
         print(f"[SPAN 4] Receipt filed. M={receipt['stability_margin']} | Constit: {receipt['constitutional']}")
 
         return {
