@@ -1,70 +1,58 @@
 # Aureonics-OS
 
-**A constitutional governor engine for adaptive stability.**
+Aureonics-OS is a FastAPI-based **constitutional governance engine** and audit dashboard for the Aureonics triad:
 
-Aureonics-OS is a FastAPI backend that operationalizes the Aureonics triad:
+- **Continuity (C)** → context coherence persistence
+- **Reciprocity (R)** → information equilibrium
+- **Sovereignty (S)** → lawful adaptive variance
 
-- **Continuity** → **CCP** (Context Coherence Persistence)
-- **Reciprocity** → **IEC** (Information Equilibrium Constant)
-- **Sovereignty** → **ADV** (Autonomous Decision Variance)
-
-The system treats adaptive behavior as a constitutional state on a triadic profile. It computes:
-
-- constitutional scores for **C, R, S**
-- **stability margin** `M = min(C, R, S)`
-- a constitutional threshold `tau = 0.15`
-- governor interventions when the system drifts toward violation or collapse
-
-This repo is not just an API wrapper around a paper. It is an executable governor prototype for the Aureonics framework.
+The platform computes a live constitutional state, tracks stability over time, and exposes both API and dashboard surfaces to inspect how governance logic behaves in practice.
 
 ---
 
-## What the system does
+## Why this repo exists
 
-### 1. Tracks constitutional state
-From tasks, projects, and signals, the engine estimates:
+This is not just a paper companion. It is an executable prototype that lets you:
 
-- **Continuity**: anchor retention and coherence persistence
-- **Reciprocity**: exchange stability and input-output alignment
-- **Sovereignty**: lawful decision variance under constraint
-
-### 2. Computes a governor view
-The governor identifies:
-
-- weakest pillar
-- violated pillars
-- constitutional band (`stable-core`, `watch`, `intervention`, `collapse-risk`)
-- governance pressure
-- target operating mode
-- structured correction plans
-- live routing policy
-
-### 3. Simulates governed dynamics
-The simulation layer implements:
-
-- replicator-style intrinsic dynamics
-- threshold-driven governor correction
-- simplex-preserving normalization
-- recovery and collapse metrics
-- parameter sweeps over `alpha` and `k`
-
-### 4. Closes the loop
-The workflow layer is now governor-aware:
-
-- new tasks can inherit a governor-biased operating mode
-- higher constitutional strain can force metric collection
-- correction queue items can be converted into remediation tasks
-- weekly profiles can be persisted as constitutional memory
+- calculate live C/R/S constitutional scores,
+- monitor the **stability margin** (`M = min(C, R, S)`),
+- apply governor interventions when the system drifts,
+- and inspect receipts through a frontend audit interface.
 
 ---
 
-## Repository structure
+## Core capabilities
+
+### 1) Constitutional state tracking
+- Computes C/R/S signals from workflow and metric inputs.
+- Classifies state into operating bands (stable/watch/intervention/collapse-risk).
+- Exposes policy hints for routing and remediation.
+
+### 2) Governor logic
+- Detects weakest pillar and deficits.
+- Produces correction plans and governance pressure indicators.
+- Supports queue-based correction workflows.
+
+### 3) Simulation services
+- Runs governed and unguided dynamics.
+- Supports adaptive and parameterized simulation endpoints.
+- Generates comparative outputs for stress testing.
+
+### 4) Praxis + dashboard auditing
+- Stores/reads constitutional receipts from SQLite (`praxis.db` by default).
+- Exposes `/praxis`, `/praxis/summary`, and `/praxis/run`.
+- Serves a dashboard at `/` and `/dashboard` for real-time interface inspection.
+
+---
+
+## Architecture at a glance
 
 ```text
 app/
   controllers/
-    routes.py
-    simulation_routes.py
+    routes.py               # workflow, governance, panels, profile
+    simulation_routes.py    # simulation APIs
+    cbf_routes.py           # CBF-focused simulation comparisons
   models/
     entities.py
     schemas.py
@@ -75,108 +63,90 @@ app/
     profile_service.py
     simulation_service.py
     workflow_service.py
+  static/
+    index.html              # Sovereign Audit Interface frontend
   database.py
-  main.py
+  main.py                   # app wiring + praxis endpoints + dashboard routes
 tests/
 docs/
-README.md
-simulation_output.json
 ```
 
 ---
 
-## Core architecture
+## API surface
 
-### Workflow layer
-Handles:
-
-- signal ingestion
-- project planning
-- task routing
-- execution updates
-- invalid task detection and correction queueing
-- governor-aware remediation creation
-
-### Metrics layer
-Implements:
-
-- **CCP** with similarity, anchor coverage, and contradiction penalty
-- **IEC** with exchange-ratio variance and input-output alignment
-- **ADV** with lawful variance, transition rate, and compliance
-
-### Governor layer
-Converts profile scores into a constitutional control snapshot with:
-
-- deficits by pillar
-- weakest pillar
-- intervention band
-- governance pressure
-- correction plans
-- policy outputs for routing, review intensity, and signal handling
-
-### Profile layer
-Builds and persists the live constitutional snapshot used by the governor and weekly reporting.
-
-### Simulation layer
-Runs governed vs unguided comparative dynamics and writes weekly profiles.
-
----
-
-## Endpoints
-
-### Core workflow
-
+### Workflow and governance
 - `POST /signal`
 - `POST /project`
 - `POST /task`
 - `PATCH /task/{task_id}`
 - `GET /tasks/invalid`
-
-### Constitutional state
-
 - `GET /profile`
 - `GET /alerts`
 - `GET /governor`
 - `GET /governor/policy`
 - `GET /weekly-profile`
-
-### Correction loop
-
 - `GET /corrections/queue`
 - `POST /corrections/apply?limit=5`
 
-### Experimental metric probes
+### Analytical panels
+- `GET /panels/analytical`
+- `GET /panels/collaborative`
+- `GET /panels/exploratory`
 
+### Metric probes
 - `POST /test/continuity`
 - `POST /test/reciprocity`
 - `POST /test/sovereignty`
 
 ### Simulation
-
 - `POST /simulate?steps=150&alpha=0.5&k=4.0&dt=0.05`
+- `GET /simulate_adaptive`
+- `POST /simulate_adaptive`
+- `GET /cbf/simulate`
+- `GET /cbf/compare`
+- `GET /cbf/multi_seed`
+
+### Praxis and dashboard
+- `GET /` (dashboard)
+- `GET /dashboard` (dashboard)
+- `GET /praxis`
+- `GET /praxis/summary`
+- `POST /praxis/run`
 
 ---
 
-## Run locally
+## Quick start
+
+### 1) Create and activate a virtual environment
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+```
+
+### 2) Install dependencies
+
+```bash
 pip install -r requirements.txt
+```
+
+### 3) Run the app
+
+```bash
 uvicorn app.main:app --reload
 ```
 
-Open the docs at:
+### 4) Open interfaces
 
-```text
-http://127.0.0.1:8000/docs
-```
+- Swagger docs: `http://127.0.0.1:8000/docs`
+- Dashboard: `http://127.0.0.1:8000/dashboard`
 
 ---
 
 ## Minimal usage flow
 
-### 1. Create a project
+### Create a project
 
 ```json
 POST /project
@@ -190,7 +160,7 @@ POST /project
 }
 ```
 
-### 2. Add a task
+### Add a task
 
 ```json
 POST /task
@@ -206,89 +176,40 @@ POST /task
 }
 ```
 
-### 3. Read the constitutional state
-
+### Inspect constitutional state
 - `GET /profile`
 - `GET /governor`
 - `GET /governor/policy`
 
-### 4. Apply queued corrections
+### Run praxis for a prompt
 
-- `GET /corrections/queue`
-- `POST /corrections/apply`
+```json
+POST /praxis/run
+{
+  "prompt": "Evaluate this proposal under continuity, reciprocity, and sovereignty constraints."
+}
+```
 
----
-
-## Simulation output
-
-The simulation layer reports governed dynamics, including:
-
-- `trajectory`
-- `min_M`, `avg_M`
-- `violations`
-- `time_below_tau`
-- `recovery_times`
-- `collapse_detected`
-- `near_collapse_count`
-- `mean_C`, `mean_R`, `mean_S`
-- `parameter_sweep`
-
-Use this to compare governed and unguided behavior.
+### Review receipts
+- `GET /praxis`
+- `GET /praxis/summary`
 
 ---
 
-## Current maturity
+## Runtime and data notes
 
-This repo is best understood as a **research-grade prototype**.
-
-Strong already:
-
-- paper-to-code alignment
-- executable governor logic
-- metric pathways for the full triad
-- simulation harness for stress testing
-- persistence and API structure
-- early closed-loop correction workflow
-
-Still being hardened:
-
-- richer benchmark scenarios
-- tighter empirical validation of CCP / IEC / ADV
-- stronger coupling between live workflow and closed-loop control
-- dashboard and visualization layer
-- experiment tracking and baseline reporting
+- Default Praxis database file is `praxis.db`.
+- You can override database path with `DB_PATH` environment variable.
+- `/praxis/run` can return HTTP `451` when the kernel refuses due to constitutional constraints.
 
 ---
 
-## Roadmap
+## Project maturity
 
-See:
+This remains a **research-grade prototype** with strong paper-to-code alignment and a practical governance API/dashboard loop.
 
-- `docs/AUREONICS_SUCCESS_PATH.md`
+Best current use:
+- constitutional experimentation,
+- governed-vs-unguided simulation analysis,
+- and operator-facing audit of C/R/S behavior over time.
 
-That file defines the path from prototype to formal governor system:
-
-1. formal hardening
-2. metric hardening
-3. benchmark suite
-4. closed-loop governor behavior
-5. public research/demo release
-
----
-
-## Research basis
-
-This repo is aligned with the Aureonics framework documents included in the project:
-
-- `Aureonics_Final_Paper_Emmanuel_KingArxiv .pdf`
-- `Aureonics_Section11_Final_Formatted.docx`
-
----
-
-## Positioning
-
-Aureonics-OS is building toward a measurable claim, not a vague brand statement:
-
-> A governed triadic system can remain more stable, recoverable, and lawfully adaptive than an unguided one.
-
-That is the standard this repo is trying to earn.
