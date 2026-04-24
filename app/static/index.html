@@ -755,17 +755,22 @@
   let receiptCache = [];
   let selectedReceiptId = null;
   let latestPraxisRun = null;
+  let praxisPollTimer = null;
+
+  function el(id) {
+    return document.getElementById(id);
+  }
 
   /* ── Sidebar (mobile) ── */
   function toggleSidebar() {
-    const s = document.getElementById('sidebar');
-    const ov = document.getElementById('overlay');
+    const s = el('sidebar');
+    const ov = el('overlay');
     s.classList.toggle('open');
     ov.classList.toggle('show', s.classList.contains('open'));
   }
   function closeSidebar() {
-    document.getElementById('sidebar').classList.remove('open');
-    document.getElementById('overlay').classList.remove('show');
+    el('sidebar').classList.remove('open');
+    el('overlay').classList.remove('show');
   }
   function runAndClose() { closeSidebar(); runSimulation(); }
   function runMultiSeedAndClose() { closeSidebar(); runMultiSeed(); }
@@ -773,7 +778,7 @@
   /* ── CBF toggle ── */
   function toggleCBF() {
     cbfOn = !cbfOn;
-    document.getElementById('cbfToggle').classList.toggle('on', cbfOn);
+    el('cbfToggle').classList.toggle('on', cbfOn);
   }
 
   const BASIN_COLORS = {
@@ -782,14 +787,14 @@
   };
 
   function setStat(id, val, cls) {
-    const el = document.getElementById(id);
-    el.textContent = val;
-    el.className = 'value ' + (cls || '');
+    const node = el(id);
+    node.textContent = val;
+    node.className = 'value ' + (cls || '');
   }
 
   function setBadge(state) {
-    const badge = document.getElementById('safetyBadge');
-    document.getElementById('safetyText').textContent =
+    const badge = el('safetyBadge');
+    el('safetyText').textContent =
       state === 'safe' ? 'Safety Guaranteed'
       : state === 'violated' ? 'Safety Violated' : 'Ready';
     badge.className = 'safety-badge ' + state;
@@ -813,7 +818,7 @@
   }
 
   function makeChart(id, datasets, yLabel, minY, maxY, safety = false) {
-    const ctx = document.getElementById(id).getContext('2d');
+    const ctx = el(id).getContext('2d');
     if (charts[id]) charts[id].destroy();
     const allData = datasets.flatMap(d => d.data.map(p => p.y));
     const cMin = minY !== undefined ? minY : Math.min(...allData) - 0.02;
@@ -853,7 +858,7 @@
   }
 
   function renderBasinStrip(basins) {
-    const strip = document.getElementById('basinStrip');
+    const strip = el('basinStrip');
     strip.innerHTML = '';
     for (const b of basins) {
       const seg = document.createElement('div');
@@ -862,11 +867,11 @@
       seg.title = b;
       strip.appendChild(seg);
     }
-    document.getElementById('basinStripWrap').style.display = '';
+    el('basinStripWrap').style.display = '';
   }
 
   function updateBasinBadge(basin) {
-    document.getElementById('statBasin').innerHTML =
+    el('statBasin').innerHTML =
       `<span class="basin-badge ${basin}">● ${basin}</span>`;
   }
 
@@ -888,23 +893,23 @@
     const R = receipt.pillar_snapshot?.R;
     const S = receipt.pillar_snapshot?.S;
     if ([C, R, S].every(v => typeof v === 'number')) {
-      document.getElementById('liveCChip').textContent = C.toFixed(4);
-      document.getElementById('liveRChip').textContent = R.toFixed(4);
-      document.getElementById('liveSChip').textContent = S.toFixed(4);
+      el('liveCChip').textContent = C.toFixed(4);
+      el('liveRChip').textContent = R.toFixed(4);
+      el('liveSChip').textContent = S.toFixed(4);
       setStat('statLiveC', C.toFixed(4), 'val-blue');
       setStat('statLiveR', R.toFixed(4), 'val-green');
       setStat('statLiveS', S.toFixed(4), 'val-yellow');
     }
     if (typeof receipt.stability_margin === 'number') {
-      document.getElementById('marginFlag').textContent = `M: ${receipt.stability_margin.toFixed(4)}`;
+      el('marginFlag').textContent = `M: ${receipt.stability_margin.toFixed(4)}`;
     }
-    document.getElementById('constitutionalFlag').textContent = `constitutional: ${boolPill(receipt.constitutional)}`;
-    document.getElementById('recoveringFlag').textContent = `recovering: ${boolPill(receipt.recovering)}`;
+    el('constitutionalFlag').textContent = `constitutional: ${boolPill(receipt.constitutional)}`;
+    el('recoveringFlag').textContent = `recovering: ${boolPill(receipt.recovering)}`;
     setStat('statConstitutional', receipt.constitutional ? 'TRUE' : 'FALSE', receipt.constitutional ? 'val-green' : 'val-red');
     setStat('statRecovering', receipt.recovering ? 'TRUE' : 'FALSE', receipt.recovering ? 'val-yellow' : 'val-muted');
-    document.getElementById('constitutionalFlag').className = 'flag-chip ' + (receipt.constitutional ? 'on' : 'warn');
-    document.getElementById('recoveringFlag').className = 'flag-chip ' + (receipt.recovering ? 'warn' : '');
-    document.getElementById('marginFlag').className = 'flag-chip ' + ((receipt.stability_margin || 0) >= 0.05 ? 'on' : 'warn');
+    el('constitutionalFlag').className = 'flag-chip ' + (receipt.constitutional ? 'on' : 'warn');
+    el('recoveringFlag').className = 'flag-chip ' + (receipt.recovering ? 'warn' : '');
+    el('marginFlag').className = 'flag-chip ' + ((receipt.stability_margin || 0) >= 0.05 ? 'on' : 'warn');
   }
 
   function drawReceiptCharts(receipts) {
@@ -935,14 +940,14 @@
       }
       renderReceiptHistory();
     } catch (e) {
-      document.getElementById('receiptList').innerHTML = `<div class="history-item">Failed to load /praxis: ${e}</div>`;
+      el('receiptList').innerHTML = `<div class="history-item">Failed to load /praxis: ${e}</div>`;
     }
   }
 
   function renderReceiptHistory() {
-    const constitutional = document.getElementById('filterConstitutional').value;
-    const recovering = document.getElementById('filterRecovering').value;
-    const modelText = document.getElementById('filterModel').value.trim().toLowerCase();
+    const constitutional = el('filterConstitutional').value;
+    const recovering = el('filterRecovering').value;
+    const modelText = el('filterModel').value.trim().toLowerCase();
     let filtered = receiptCache.filter(item => {
       if (constitutional === 'yes' && !item.constitutional) return false;
       if (constitutional === 'no' && item.constitutional) return false;
@@ -952,7 +957,7 @@
       if (modelText && !modelBlob.includes(modelText)) return false;
       return true;
     });
-    const list = document.getElementById('receiptList');
+    const list = el('receiptList');
     if (!filtered.length) {
       list.innerHTML = '<div class="history-item">No receipts match current filters.</div>';
       return;
@@ -966,7 +971,8 @@
         </div>
       </div>
     `).join('');
-    if (!selectedReceiptId && filtered.length) {
+    const hasSelected = filtered.some(item => item.id === selectedReceiptId);
+    if ((!selectedReceiptId || !hasSelected) && filtered.length) {
       inspectReceipt(filtered[0].id);
     }
   }
@@ -976,7 +982,7 @@
     const item = receiptCache.find(r => r.id === id);
     if (!item) return;
     renderReceiptHistory();
-    document.getElementById('receiptDetails').innerHTML = `
+    el('receiptDetails').innerHTML = `
       <div><strong>Receipt #${item.id}</strong> · ${item.timestamp_iso || '—'}</div>
       <div>C=${(item.pillar_snapshot?.C || 0).toFixed(6)} | R=${(item.pillar_snapshot?.R || 0).toFixed(6)} | S=${(item.pillar_snapshot?.S || 0).toFixed(6)}</div>
       <div>Stability Margin: ${(item.stability_margin || 0).toFixed(6)}</div>
@@ -987,10 +993,10 @@
   }
 
   async function runPraxis() {
-    const prompt = document.getElementById('praxisPrompt').value.trim();
+    const prompt = el('praxisPrompt').value.trim();
     if (!prompt) return;
-    document.getElementById('promptView').textContent = prompt;
-    document.getElementById('responseView').textContent = 'Running...';
+    el('promptView').textContent = prompt;
+    el('responseView').textContent = 'Running...';
     try {
       const res = await fetch('/praxis/run', {
         method: 'POST',
@@ -999,24 +1005,24 @@
       });
       const data = await res.json();
       if (!res.ok) {
-        document.getElementById('responseView').textContent = JSON.stringify(data, null, 2);
+        el('responseView').textContent = JSON.stringify(data, null, 2);
         return;
       }
       latestPraxisRun = data;
-      document.getElementById('responseView').textContent = data.response || '—';
+      el('responseView').textContent = data.response || '—';
       const align = computeAlignmentStatus(prompt, data.response || '');
-      const alignmentFlag = document.getElementById('alignmentFlag');
+      const alignmentFlag = el('alignmentFlag');
       alignmentFlag.textContent = `Alignment: ${align.label}`;
       alignmentFlag.className = 'flag-chip ' + align.cls;
       const projected = !!data.receipt?.safety_projection_triggered;
-      const projectionFlag = document.getElementById('projectionFlag');
+      const projectionFlag = el('projectionFlag');
       projectionFlag.textContent = `Projection: ${projected ? 'triggered' : 'not triggered'}`;
       projectionFlag.className = 'flag-chip ' + (projected ? 'warn' : 'on');
       const adv = typeof data.adv_gain === 'number' ? data.adv_gain : null;
       if (adv !== null) {
         setStat('statAdvGain', adv.toFixed(4), adv >= 0.005 ? 'val-green' : 'val-yellow');
-        document.getElementById('advFlag').textContent = `adv_gain: ${adv.toFixed(4)}`;
-        document.getElementById('advFlag').className = 'flag-chip ' + (adv >= 0.005 ? 'on' : 'warn');
+        el('advFlag').textContent = `adv_gain: ${adv.toFixed(4)}`;
+        el('advFlag').className = 'flag-chip ' + (adv >= 0.005 ? 'on' : 'warn');
       }
       const state = data.state || {};
       if (typeof state.C === 'number' && typeof state.R === 'number' && typeof state.S === 'number') {
@@ -1028,23 +1034,23 @@
         });
       }
       const weakest = Object.entries(state).sort((a, b) => a[1] - b[1])[0]?.[0] || '—';
-      document.getElementById('projectionPillars').textContent =
+      el('projectionPillars').textContent =
         projected ? `Projection details: trigger detected, weakest affected pillar was ${weakest}.`
                   : 'Projection details: no trigger in latest run.';
       await loadPraxisReceipts();
     } catch (e) {
-      document.getElementById('responseView').textContent = 'Run failed: ' + e;
+      el('responseView').textContent = 'Run failed: ' + e;
     }
   }
 
   /* ── Run single simulation ── */
   async function runSimulation() {
-    const seed = document.getElementById('seed').value;
-    const steps = document.getElementById('steps').value;
-    const alpha = document.getElementById('alpha').value;
-    const dt = document.getElementById('dt').value;
-    const signal = document.getElementById('signal').value;
-    const iecTarget = document.getElementById('iecTarget').value;
+    const seed = el('seed').value;
+    const steps = el('steps').value;
+    const alpha = el('alpha').value;
+    const dt = el('dt').value;
+    const signal = el('signal').value;
+    const iecTarget = el('iecTarget').value;
 
     setBadge('idle');
     setStat('statMinM', '…', 'val-muted');
@@ -1096,16 +1102,16 @@
 
   /* ── Multi-seed governed vs ungoverned ── */
   async function runMultiSeed() {
-    const steps = document.getElementById('steps').value;
-    const alpha  = document.getElementById('alpha').value;
-    const dt     = document.getElementById('dt').value;
-    const signal = document.getElementById('signal').value;
-    const iecTarget = document.getElementById('iecTarget').value;
+    const steps = el('steps').value;
+    const alpha  = el('alpha').value;
+    const dt     = el('dt').value;
+    const signal = el('signal').value;
+    const iecTarget = el('iecTarget').value;
 
-    document.getElementById('seedSection').style.display = '';
-    document.getElementById('seedGrid').innerHTML =
+    el('seedSection').style.display = '';
+    el('seedGrid').innerHTML =
       '<div style="color:var(--muted);display:flex;align-items:center;gap:8px;padding:8px 0"><div class="spinner"></div>Running 8 seeds × 2 modes…</div>';
-    document.getElementById('seedSummary').innerHTML = '';
+    el('seedSummary').innerHTML = '';
 
     let data;
     try {
@@ -1114,7 +1120,7 @@
     } catch (e) { alert('Request failed: ' + e); return; }
 
     /* Summary banners */
-    const sumEl = document.getElementById('seedSummary');
+    const sumEl = el('seedSummary');
     const govOk = data.all_governed_safe;
     const unvFail = data.all_ungoverned_violated;
     sumEl.innerHTML =
@@ -1122,7 +1128,7 @@
       `<span style="color:${unvFail ? 'var(--red)' : 'var(--yellow)'};font-weight:600">${unvFail ? '✗' : '⚠'} Ungoverned: ${unvFail ? 'all 8 collapse (expected)' : 'some still safe'}</span>`;
 
     /* Seed cards */
-    const grid = document.getElementById('seedGrid');
+    const grid = el('seedGrid');
     grid.innerHTML = '';
     for (const r of data.results) {
       const gOk  = !r.governed.safety_violated;
@@ -1153,12 +1159,18 @@
     }
 
     /* Scroll to results on mobile */
-    document.getElementById('seedSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el('seedSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  window.addEventListener('load', () => runSimulation());
-  window.addEventListener('load', () => loadPraxisReceipts());
-  window.addEventListener('load', () => setInterval(loadPraxisReceipts, 10000));
+  function initializeDashboard() {
+    runSimulation();
+    loadPraxisReceipts();
+    if (!praxisPollTimer) {
+      praxisPollTimer = setInterval(loadPraxisReceipts, 10000);
+    }
+  }
+
+  window.addEventListener('load', initializeDashboard);
 
   /* Close sidebar on resize to desktop */
   window.addEventListener('resize', () => {
