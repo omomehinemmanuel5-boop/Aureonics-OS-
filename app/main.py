@@ -3,6 +3,7 @@ import sqlite3
 
 from fastapi import FastAPI
 from fastapi import HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -16,6 +17,12 @@ from sovereign_kernel_v2 import SovereignKernel
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Aureonics Governor Engine")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(router)
 app.include_router(simulation_router)
 app.include_router(cbf_router)
