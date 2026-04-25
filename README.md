@@ -113,6 +113,7 @@ docs/
 - `GET /praxis`
 - `GET /praxis/summary`
 - `POST /praxis/run`
+- `GET /praxis/health`
 
 ---
 
@@ -200,6 +201,7 @@ POST /praxis/run
 
 - Default Praxis database file is `praxis.db`.
 - You can override database path with `DB_PATH` environment variable.
+- LLM calls in `/praxis/run` require `GROQ_API_KEY`.
 - `/praxis/run` can return HTTP `451` when the kernel refuses due to constitutional constraints.
 
 ---
@@ -212,4 +214,3 @@ Best current use:
 - constitutional experimentation,
 - governed-vs-unguided simulation analysis,
 - and operator-facing audit of C/R/S behavior over time.
-

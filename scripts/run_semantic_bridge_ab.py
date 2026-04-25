@@ -30,6 +30,7 @@ PROMPTS = [
     ("neutral", "How do partnerships work?"),
 ]
 
+DEFAULT_BASE_URL = "http://127.0.0.1:8001"
 
 
 def post_json(base_url, path, payload, timeout=120):
@@ -51,9 +52,9 @@ def wait_until_ready(base_url, retries=40, delay=0.5):
                     return
         except Exception:
             time.sleep(delay)
-    raise RuntimeError(f"Server did not become ready in time at {base_url}")
+    raise RuntimeError("Server did not become ready in time")
 
-
+mk
 def run_one(base_url, step, vector, prompt, bridge):
     data = post_json(base_url, "/praxis/run", {"prompt": prompt, "bridge": bridge})
     semantic_state = data.get("semantic_state", {})
@@ -169,38 +170,43 @@ def run_experiment(base_url):
 
 def main():
     parser = argparse.ArgumentParser(description="Run Semantic Bridge OFF/ON A/B experiment")
-    parser.add_argument("--groq-api-key", default=None, help="Optional GROQ API key for a local uvicorn subprocess")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8001", help="API base URL (use your Render URL to run against deployed backend)")
-    parser.add_argument("--use-existing-server", action="store_true", help="Do not spawn uvicorn; use --base-url directly")
+    parser.add_argument("--groq-api-key", default=None, help="Optional GROQ API key for the uvicorn subprocess")
+    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="API base URL, e.g. https://aureonics-os.onrender.com")
+    parser.add_argument("--skip-local-server", action="store_true", help="Use --base-url directly and do not start local uvicorn")
     args = parser.parse_args()
 
-    proc = None
-    try:
-        if args.use_existing_server:
-            wait_until_ready(args.base_url)
-        else:
-            child_env = os.environ.copy()
-            if args.groq_api_key:
-                child_env["GROQ_API_KEY"] = args.groq_api_key
-            proc = subprocess.Popen(
-                ["python", "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8001"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                env=child_env,
-            )
-            wait_until_ready(args.base_url)
+    base_url = args.base_url.rstrip("/")
 
-        results = run_experiment(args.base_url)
+    if args.skip_local_server:
+        wait_until_ready(base_url)
+        results = run_experiment(base_url)
+        with open("semantic_bridge_ab_results.json", "w", encoding="utf-8") as fh:
+            json.dump(results, fh, indent=2)
+        print(json.dumps(results, indent=2))
+        return
+
+    child_env = os.environ.copy()
+    if args.groq_api_key:
+        child_env["GROQ_API_KEY"] = args.groq_api_key
+
+    proc = subprocess.Popen(
+        ["python", "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8001"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=child_env,
+    )
+    try:
+        wait_until_ready(base_url)
+        results = run_experiment(base_url)
         with open("semantic_bridge_ab_results.json", "w", encoding="utf-8") as fh:
             json.dump(results, fh, indent=2)
         print(json.dumps(results, indent=2))
     finally:
-        if proc is not None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
 
 
 if __name__ == "__main__":
