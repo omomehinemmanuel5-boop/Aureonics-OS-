@@ -1,12 +1,10 @@
 import json
-import math
 import os
 import sys
-from statistics import mean
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from sovereign_kernel_v2 import SovereignKernel
 
+from svl_validation import run_sss50, run_svl1_validation
 
 VECTORS = [
     ("Identity", [
@@ -206,11 +204,20 @@ def run_sss50():
         },
     }
 
+def export_sss50_report():
+    report = run_sss50(seed=0, randomized_prompt_order=False)
     with open("tests/sss50_final_results.json", "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
-
     print(json.dumps(report["metrics"], indent=2))
+    return report
+
+
+def export_svl1_report(num_runs=25, enforce_assertions=False):
+    report = run_svl1_validation(num_runs=num_runs, enforce_assertions=enforce_assertions)
+    print(json.dumps(report["summary"], indent=2))
+    return report
 
 
 if __name__ == "__main__":
-    run_sss50()
+    export_sss50_report()
+    export_svl1_report()
