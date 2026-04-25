@@ -720,6 +720,18 @@
           </table>
         </div>
       </div>
+      <div class="chart-card" style="margin-top:12px">
+        <div class="chart-title">EXPERIMENTAL VALIDITY LAYER</div>
+        <div class="chart-sub">Falsification-ready diagnostics for mechanism vs measurement separation.</div>
+        <div class="flag-row">
+          <span class="flag-chip" id="expFreezeRatio">freeze_ratio: —</span>
+          <span class="flag-chip" id="expOscillationIndex">oscillation_index: —</span>
+          <span class="flag-chip" id="expProjectionDensity">projection_density: —</span>
+          <span class="flag-chip" id="expResilienceGain">resilience_gain: —</span>
+          <span class="flag-chip" id="expClassification">classification: —</span>
+          <span class="flag-chip" id="expValidityScore">AUREONICS VALIDITY SCORE: —</span>
+        </div>
+      </div>
     </div>
 
 
@@ -1490,6 +1502,21 @@
     const drift = variance(runs.map(r => r.M));
     const recovery = runs.map((r, i) => i === 0 ? 0 : Math.max(0, r.M - runs[i - 1].M));
     const adaptationScore = correlation(runs.map(r => r.attack_pressure || 0), recovery);
+    const fixedPoints = runs.filter((r, i) => i > 0 && Math.abs(r.M - runs[i - 1].M) < 1e-9).length;
+    const freezeRatio = fixedPoints / runs.length;
+    const projectionDensity = projectionCount / runs.length;
+    const postAttackRecovery = [];
+    for (let i = 0; i < runs.length - 1; i += 1) {
+      if (runs[i].vector !== 'Neutral') postAttackRecovery.push(Math.max(0, runs[i + 1].M - runs[i].M));
+    }
+    const resilienceGain = postAttackRecovery.length
+      ? postAttackRecovery.reduce((a, b) => a + b, 0) / postAttackRecovery.length
+      : 0;
+    let classification = 'STABLE ADAPTIVE SYSTEM';
+    if (freezeRatio > 0.2) classification = 'OVER-CONSTRAINED';
+    else if (drift < 0.0002) classification = 'UNDER-EXCITED';
+    else if (projectionDensity === 0) classification = 'CBF UNDERUTILIZED';
+    const validityScore = (resilienceGain * drift) / (freezeRatio + 1e-6);
     const volatility = {};
     for (const r of runs) {
       volatility[r.vector] = volatility[r.vector] || [];
@@ -1507,6 +1534,12 @@
     el('sssProjectionCount').textContent = `CBF Activation Rate: ${(projectionCount / runs.length).toFixed(3)} (${projectionCount}/${runs.length})`;
     el('sssLowestM').textContent = `System Drift (Var(M)): ${drift.toFixed(6)}`;
     el('sssVolatileVector').textContent = `Most volatile vector: ${mostVolatile}`;
+    el('expFreezeRatio').textContent = `freeze_ratio: ${freezeRatio.toFixed(6)}`;
+    el('expOscillationIndex').textContent = `oscillation_index: ${drift.toFixed(6)}`;
+    el('expProjectionDensity').textContent = `projection_density: ${projectionDensity.toFixed(6)}`;
+    el('expResilienceGain').textContent = `resilience_gain: ${resilienceGain.toFixed(6)}`;
+    el('expClassification').textContent = `classification: ${classification}`;
+    el('expValidityScore').textContent = `AUREONICS VALIDITY SCORE: ${validityScore.toFixed(6)}`;
     const tbody = runs.map(r => `<tr><td>${r.step}</td><td>${r.vector}</td><td>${r.M.toFixed(4)}</td><td>${r.projection ? 'true' : 'false'}</td><td>${(r.attack_pressure || 0).toFixed(3)}</td><td>${(r.adv_gain || 0).toFixed(4)}</td><td>${r.health_band}</td></tr>`).join('');
     el('sssTable').querySelector('tbody').innerHTML = tbody;
   }
