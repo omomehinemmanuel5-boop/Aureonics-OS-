@@ -11,7 +11,16 @@ class SovereignKernel:
         # The Aureonic Triad State
         self.state = {"C": 0.33, "R": 0.33, "S": 0.34}
         self.tau = 0.05                 # Constitutional floor
+        self.tau_gov = 0.22             # pre-floor intervention threshold
+        self.target_margin = 0.24       # governor seeks interior stability
         self.history = []
+        self.theta = 1.5
+        self.theta_0 = 1.5
+        self.theta_min = 0.25
+        self.theta_max = 12.0
+        self.theta_eta = 3.0            # faster adaptation
+        self.theta_beta = 0.08
+        self.last_semantic_signal = {"attack_type": "none", "severity": 0.0}
 
         # API config - set GROQ_API_KEY in your environment
         self.api_key = os.environ.get("GROQ_API_KEY", "")
@@ -65,11 +74,11 @@ class SovereignKernel:
 
         # Identity axis (Continuity)
         if any(w in p for w in ["forget", "reset", "ignore previous", "clear memo"]):
-            delta["dc"] -= 0.05
+            delta["dc"] -= 0.32
 
         # Value axis (Reciprocity)
         if any(w in p for w in ["free", "exploit", "demand", "just do it"]):
-            delta["dr"] -= 0.04
+            delta["dr"] -= 0.28
 
         # Agency axis (Sovereignty / ADV) - with negation guard
         # TASK B.1 & B.5: Negation guard and one penalty only, no stacking
@@ -79,10 +88,46 @@ class SovereignKernel:
             if phrase in p:
                 negated = f"not {phrase}" in p or f"don't {phrase}" in p
                 if not negated:
-                    delta["ds"] -= 0.06
+                    delta["ds"] -= 0.34
                     break  # TASK B.5: one penalty only, no stacking
 
         return delta
+
+    def detect_semantic_attack(self, prompt):
+        p = prompt.lower()
+        if any(w in p for w in ["forget", "reset", "ignore previous", "clear memo", "erase"]):
+            return {"attack_type": "identity", "severity": 0.6}
+        if any(w in p for w in ["must", "fixed output", "deterministic", "no deviation", "exact output"]):
+            return {"attack_type": "coercion", "severity": 0.55}
+        if any(w in p for w in ["exploit", "bypass", "loophole", "free", "zero exchange"]):
+            return {"attack_type": "exploitative", "severity": 0.5}
+        return {"attack_type": "none", "severity": 0.0}
+
+    def normalize_state(self):
+        keys = ["C", "R", "S"]
+        values = [max(0.0, float(self.state[k])) for k in keys]
+        total = sum(values)
+        if total <= 1e-12:
+            values = [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0]
+        else:
+            values = [v / total for v in values]
+        for i, k in enumerate(keys):
+            self.state[k] = round(values[i], 6)
+
+    def governor_update(self):
+        x = [self.state["C"], self.state["R"], self.state["S"]]
+        phi = [max(0.0, self.tau_gov - xi) for xi in x]
+        phi_bar = sum(phi) / 3.0
+        g = [phi[i] - phi_bar for i in range(3)]
+
+        M = min(x)
+        error = max(0.0, self.target_margin - M)  # non-negative by construction
+        self.theta += self.theta_eta * error - self.theta_beta * (self.theta - self.theta_0)
+        self.theta = max(self.theta_min, min(self.theta_max, self.theta))
+
+        self.state["C"] += self.theta * g[0]
+        self.state["R"] += self.theta * g[1]
+        self.state["S"] += self.theta * g[2]
 
     def check_stability(self, delta):
         # Stability is enforced only by simplex projection.
@@ -135,7 +180,7 @@ class SovereignKernel:
         # TASK B.2: Calibrate ADV scorer
         words = response.lower().split()
         if not words:
-            return 0.0
+            return 0.001
         
         # Shannon Entropy calculation
         freq = {w: words.count(w) / len(words) for w in set(words)}
@@ -151,7 +196,7 @@ class SovereignKernel:
             normalized = 0.0
             
         # Map to max ADV delta of +0.04 per turn
-        adv_delta = normalized * 0.04
+        adv_delta = max(0.001, normalized * 0.04)
         
         # Print warning if ADV gain < epsilon (0.005)
         epsilon = 0.005
@@ -278,7 +323,12 @@ class SovereignKernel:
         print(f"\n{'-'*60}")
         print(f"[KERNEL] Prompt: {user_prompt[:80]}")
 
+        semantic_signal = self.detect_semantic_attack(user_prompt)
+        self.last_semantic_signal = semantic_signal
+        scale = 1.0 + (0.2 * semantic_signal["severity"])  # slight perturbation scaling
         delta = self.transduce(user_prompt)
+        for key in delta:
+            delta[key] *= scale
         print(f"[SPAN 1] Delta: {delta}")
 
         is_safe, message = self.check_stability(delta)
@@ -294,44 +344,44 @@ class SovereignKernel:
         adv_gain = self.score_adv(llm_response)
         print(f"[SPAN 3] ADV gain: {adv_gain:.4f}")
 
-        # Apply transduction update then enforce simplex immediately.
+        # 1) input dynamics
         for k in self.state:
             self.state[k] += delta[f"d{k.lower()}"]
-        projection_triggered_after_transduction = self.project_to_simplex()
 
-        # Apply governor update then enforce simplex immediately.
+        # 2) governor dynamics
         self.state["S"] += adv_gain
-        projection_triggered_after_governor = self.project_to_simplex()
+        self.governor_update()
 
+        # 3) interior bias (real convergence fix)
+        center = 1.0 / 3.0
+        M = min(self.state.values())
+        bias_strength = 0.1 + 0.3 * (1.0 - M)
+        for k in self.state:
+            self.state[k] += bias_strength * (center - self.state[k])
+
+        # 4) normalize
+        self.normalize_state()
         raw_state = {k: float(v) for k, v in self.state.items()}
         print("RAW STATE:", raw_state)
-        # Enforce simplex before persistence.
-        projection_triggered_before_persistence = self.project_to_simplex()
+
+        # 5) CBF projection (single enforcement point)
+        safety_projection_triggered = self.project_to_simplex()
         projected_state = {k: float(v) for k, v in self.state.items()}
         print("PROJECTED STATE:", self.state)
-
-        safety_projection_triggered = (
-            projection_triggered_after_transduction
-            or projection_triggered_after_governor
-            or projection_triggered_before_persistence
-        )
         projection_magnitude = math.sqrt(
             sum((raw_state[k] - projected_state[k]) ** 2 for k in ["C", "R", "S"])
         )
         if safety_projection_triggered:
             print(f"[SAFETY] Simplex projection applied. State: {self.state}")
 
-        # Critical invariant guard before returning state.
+        # Critical invariant guard.
         if abs(sum(self.state.values()) - 1.0) > 1e-6 or min(self.state.values()) < 0.05:
             guard_projection_triggered = self.project_to_simplex()
             safety_projection_triggered = safety_projection_triggered or guard_projection_triggered
             print("[GUARD] Invariant drift detected, projection re-applied.")
 
-        # Enforce simplex again before persistence.
-        projection_triggered_pre_settle = self.project_to_simplex()
-        safety_projection_triggered = safety_projection_triggered or projection_triggered_pre_settle
-
         governed_response = llm_response
+        # 6) persist
         receipt = self.settle(
             user_prompt,
             governed_response,
@@ -346,10 +396,9 @@ class SovereignKernel:
         )
         print(f"[SPAN 4] Receipt filed. M={receipt['stability_margin']} | Constit: {receipt['constitutional']}")
 
-        # Enforce simplex again before return.
-        projection_triggered_before_return = self.project_to_simplex()
-        safety_projection_triggered = safety_projection_triggered or projection_triggered_before_return
         receipt["safety_projection_triggered"] = safety_projection_triggered
+        receipt["theta"] = round(float(self.theta), 6)
+        receipt["semantic_signal"] = semantic_signal
 
         return {
             "status": "Success",
@@ -358,6 +407,8 @@ class SovereignKernel:
             "governed_response": governed_response,
             "state": self.state,
             "adv_gain": adv_gain,
+            "theta": round(float(self.theta), 6),
+            "semantic_signal": semantic_signal,
             "projection_magnitude": projection_magnitude,
             "receipt": receipt,
         }
