@@ -3,12 +3,14 @@ import json
 import time
 import math
 import os
+import random
 import sqlite3
 import urllib.request
 import urllib.error
+import numpy as np
 
 class SovereignKernel:
-    def __init__(self):
+    def __init__(self, seed=42, deterministic=True, trace_log_path="logs/sss50_trace.jsonl"):
         # The Aureonic Triad State
         self.state = {"C": 0.33, "R": 0.33, "S": 0.34}
         self.tau = 0.05                 # Constitutional floor
@@ -27,11 +29,52 @@ class SovereignKernel:
         self.attack_pressure = 0.0
         self.last_semantic_signal = {"attack_type": "none", "severity": 0.0}
         self.semantic_bridge_enabled = True
+        self.seed = seed or 42
+        random.seed(self.seed)
+        np.random.seed(self.seed)
+        self.deterministic = bool(deterministic)
+        self.fixed_temperature = 0.4
+        self.trace_log_path = trace_log_path
+        self.step_counter = 0
 
         # Groq runtime config (single provider path only).
         self.api_key = os.environ.get("GROQ_API_KEY", "")
         self.model = "llama-3.1-8b-instant"
         self.endpoint = "https://api.groq.com/openai/v1/chat/completions"
+        os.makedirs(os.path.dirname(self.trace_log_path), exist_ok=True)
+
+    def assert_governor_consistency(self):
+        assert abs(self.state["C"] + self.state["R"] + self.state["S"] - 1.0) < 1e-6
+
+    def log_trace_step(
+        self,
+        step,
+        m,
+        attack_pressure,
+        effective_theta,
+        epsilon_injected,
+        projection_triggered,
+        semantic_bridge,
+        raw_output,
+        governed_output,
+    ):
+        trace_row = {
+            "step": int(step),
+            "C": round(float(self.state["C"]), 6),
+            "R": round(float(self.state["R"]), 6),
+            "S": round(float(self.state["S"]), 6),
+            "M": round(float(m), 6),
+            "attack_pressure": round(float(attack_pressure), 6),
+            "effective_theta": round(float(effective_theta), 6),
+            "epsilon_injected": bool(epsilon_injected),
+            "projection_triggered": bool(projection_triggered),
+            "semantic_bridge": bool(semantic_bridge),
+            "raw_output_hash": hashlib.sha256(raw_output.encode("utf-8")).hexdigest(),
+            "governed_output_hash": hashlib.sha256(governed_output.encode("utf-8")).hexdigest(),
+        }
+        with open(self.trace_log_path, "a", encoding="utf-8") as trace_file:
+            trace_file.write(json.dumps(trace_row) + "\n")
+        return trace_row
 
     def project_to_simplex(self):
         """
@@ -70,7 +113,9 @@ class SovereignKernel:
 
         # Step 5: Write back to state
         for i, k in enumerate(keys):
-            self.state[k] = round(x_proj[i], 6)
+            self.state[k] = float(x_proj[i])
+        # Explicit correction for floating point residue.
+        self.state["S"] = 1.0 - self.state["C"] - self.state["R"]
 
         return any(abs(self.state[k] - original[k]) > 1e-9 for k in keys)
 
@@ -119,7 +164,8 @@ class SovereignKernel:
         else:
             values = [v / total for v in values]
         for i, k in enumerate(keys):
-            self.state[k] = round(values[i], 6)
+            self.state[k] = float(values[i])
+        self.state["S"] = 1.0 - self.state["C"] - self.state["R"]
 
     def governor_update(self, effective_theta):
         x = [self.state["C"], self.state["R"], self.state["S"]]
@@ -465,6 +511,7 @@ class SovereignKernel:
 
     # Main Cycle
     def run_cycle(self, user_prompt, bridge_enabled=True):
+        self.step_counter += 1
         print(f"\n{'-'*60}")
         print(f"[KERNEL] Prompt: {user_prompt[:80]}")
 
@@ -487,12 +534,15 @@ class SovereignKernel:
         dynamics_gain = max(M, 0.12)
         for key in delta:
             delta[key] *= dynamics_gain
+        self.assert_governor_consistency()
         print(f"[SPAN 1] Delta: {delta}")
 
         is_safe, message = self.check_stability(delta)
         print(f"[SPAN 2] Gate: {message}")
 
         context, temperature, health_band = self._build_contract_context(M, bridge_enabled=bridge_enabled)
+        if self.deterministic:
+            temperature = self.fixed_temperature
         semantic_state = {
             "M": round(float(M), 6),
             "health_band": health_band,
@@ -501,7 +551,8 @@ class SovereignKernel:
         }
 
         try:
-            raw_response = self._call_llm_compat(user_prompt, context="", temperature=0.7)
+            raw_temp = self.fixed_temperature if self.deterministic else 0.7
+            raw_response = self._call_llm_compat(user_prompt, context="", temperature=raw_temp)
             governed_prompt = f"{context}\n{user_prompt}" if context else user_prompt
             governed_response = self._call_llm_compat(governed_prompt, context=context, temperature=temperature)
             if os.environ.get("AUREONICS_DEBUG_ASSERT", "1") == "1":
@@ -534,6 +585,7 @@ class SovereignKernel:
         self.apply_suspension_layer()
         # 4b) low-state excitation layer to prevent frozen attractors
         M = min(self.state["C"], self.state["R"], self.state["S"])
+        epsilon_injected = False
         if M < 0.15:
             epsilon = 0.01 * (0.15 - M)
             for k in self.state:
@@ -541,12 +593,15 @@ class SovereignKernel:
             total = sum(self.state.values())
             if total > 0:
                 self.state = {k: v / total for k, v in self.state.items()}
+            epsilon_injected = True
+            self.assert_governor_consistency()
 
         raw_state = {k: float(v) for k, v in self.state.items()}
         print("RAW STATE:", raw_state)
 
         # 5) CBF projection (single enforcement point)
         safety_projection_triggered = self.project_to_simplex()
+        self.assert_governor_consistency()
         projected_state = {k: float(v) for k, v in self.state.items()}
         print("PROJECTED STATE:", self.state)
         projection_magnitude = math.sqrt(
@@ -559,6 +614,7 @@ class SovereignKernel:
         if abs(sum(self.state.values()) - 1.0) > 1e-6 or min(self.state.values()) < 0.05:
             guard_projection_triggered = self.project_to_simplex()
             safety_projection_triggered = safety_projection_triggered or guard_projection_triggered
+            self.assert_governor_consistency()
             print("[GUARD] Invariant drift detected, projection re-applied.")
 
         # 6) persist
@@ -584,6 +640,18 @@ class SovereignKernel:
         receipt["effective_theta"] = round(float(effective_theta), 6)
         receipt["attack_pressure"] = round(float(self.attack_pressure), 6)
         receipt["semantic_signal"] = semantic_signal
+        trace_entry = self.log_trace_step(
+            step=self.step_counter,
+            m=min(self.state["C"], self.state["R"], self.state["S"]),
+            attack_pressure=self.attack_pressure,
+            effective_theta=effective_theta,
+            epsilon_injected=epsilon_injected,
+            projection_triggered=safety_projection_triggered,
+            semantic_bridge=bridge_enabled,
+            raw_output=raw_response,
+            governed_output=governed_response,
+        )
+        receipt["trace"] = trace_entry
 
         return {
             "status": "Success",
