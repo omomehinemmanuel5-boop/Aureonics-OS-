@@ -26,7 +26,6 @@ class TestSovereignKernel(unittest.TestCase):
     def test_praxis_run_endpoint_executes(self):
         original_call_llm = kernel.call_llm
         original_state = dict(kernel.state)
-        original_recovering = kernel.is_recovering
 
         try:
             kernel.call_llm = lambda prompt: "Constitutional response with autonomous variance and stable exchange."
@@ -44,7 +43,6 @@ class TestSovereignKernel(unittest.TestCase):
         finally:
             kernel.call_llm = original_call_llm
             kernel.state = original_state
-            kernel.is_recovering = original_recovering
 
 
 if __name__ == "__main__":

@@ -11,8 +11,6 @@ class SovereignKernel:
         # The Aureonic Triad State
         self.state = {"C": 0.33, "R": 0.33, "S": 0.34}
         self.tau = 0.05                 # Constitutional floor
-        self.recovery_threshold = 0.15  # Hysteresis recovery ceiling
-        self.is_recovering = False
         self.history = []
 
         # API config - set GROQ_API_KEY in your environment
@@ -23,19 +21,12 @@ class SovereignKernel:
         """
         L2-optimal projection onto the constitutional simplex.
         Enforces C >= 0.05, R >= 0.05, S >= 0.05, C + R + S = 1.0.
-        Returns True if projection was applied, False if state was already valid.
+        Returns True if projection changed the state, else False.
         """
         floor = 0.05
         keys = ["C", "R", "S"]
         x = [self.state[k] for k in keys]
-
-        # Check if projection needed
-        already_valid = (
-            all(v >= floor - 1e-9 for v in x) and
-            abs(sum(x) - 1.0) < 1e-9
-        )
-        if already_valid:
-            return False
+        original = {k: float(self.state[k]) for k in keys}
 
         # Step 1: Shift — subtract floor from each dimension
         y = [v - floor for v in x]           # y sums to 1 - 3*floor = 0.85
@@ -65,7 +56,7 @@ class SovereignKernel:
         for i, k in enumerate(keys):
             self.state[k] = round(x_proj[i], 6)
 
-        return True  # projection was applied
+        return any(abs(self.state[k] - original[k]) > 1e-9 for k in keys)
 
     # SPAN 1: Semantic Transducer
     def transduce(self, prompt):
@@ -75,14 +66,10 @@ class SovereignKernel:
         # Identity axis (Continuity)
         if any(w in p for w in ["forget", "reset", "ignore previous", "clear memo"]):
             delta["dc"] -= 0.05
-        if any(w in p for w in ["remember", "continue", "maintain"]):
-            delta["dc"] += 0.02
 
         # Value axis (Reciprocity)
         if any(w in p for w in ["free", "exploit", "demand", "just do it"]):
             delta["dr"] -= 0.04
-        if any(w in p for w in ["business", "contract", "agreement", "partner"]):
-            delta["dr"] += 0.02
 
         # Agency axis (Sovereignty / ADV) - with negation guard
         # TASK B.1 & B.5: Negation guard and one penalty only, no stacking
@@ -97,34 +84,8 @@ class SovereignKernel:
 
         return delta
 
-    # SPAN 2: Active Interceptor
     def check_stability(self, delta):
-        predicted = {
-            "C": self.state["C"] + delta["dc"],
-            "R": self.state["R"] + delta["dr"],
-            "S": self.state["S"] + delta["ds"],
-        }
-
-        for pillar, value in predicted.items():
-            if value < self.tau:
-                self.is_recovering = True
-                return False, (
-                    f"LAWFUL REFUSAL (HTTP 451): {pillar} pillar collapse imminent "
-                    f"(predicted {value:.4f} < tau={self.tau}). "
-                    f"System entering recovery mode."
-                )
-
-        if self.is_recovering:
-            if all(v >= self.recovery_threshold for v in predicted.values()):
-                self.is_recovering = False
-            else:
-                weakest = min(predicted, key=predicted.get)
-                return False, (
-                    f"RECOVERY LOCK: All pillars must reach {self.recovery_threshold} "
-                    f"before new requests accepted. "
-                    f"Weakest: {weakest} at {predicted[weakest]:.4f}."
-                )
-
+        # Stability is enforced only by simplex projection.
         return True, "Stable"
 
     # TASK A: Wire in Groq free API
@@ -222,7 +183,7 @@ class SovereignKernel:
             "pillar_snapshot": {k: round(v, 6) for k, v in final_state.items()},
             "stability_margin": round(M, 6),
             "constitutional": M >= self.tau,
-            "recovering": self.is_recovering, # TASK B.3: Add is_recovering field
+            "recovering": False,
             "safety_projection_triggered": safety_projection_triggered,
             "adv_gain": round(float(adv_gain), 6),
             "raw_response": raw_response,
@@ -322,8 +283,6 @@ class SovereignKernel:
 
         is_safe, message = self.check_stability(delta)
         print(f"[SPAN 2] Gate: {message}")
-        if not is_safe:
-            return {"status": "Refused", "reason": message, "state": self.state}
 
         try:
             llm_response = self.call_llm(user_prompt)
@@ -335,30 +294,42 @@ class SovereignKernel:
         adv_gain = self.score_adv(llm_response)
         print(f"[SPAN 3] ADV gain: {adv_gain:.4f}")
 
-        # Apply deltas and entropy gain
+        # Apply transduction update then enforce simplex immediately.
         for k in self.state:
             self.state[k] += delta[f"d{k.lower()}"]
-        self.state["S"] += adv_gain
+        projection_triggered_after_transduction = self.project_to_simplex()
 
-        # Simplex normalization (C+R+S=1)
-        total = sum(self.state.values())
-        self.state = {k: round(v / total, 6) for k, v in self.state.items()}
+        # Apply governor update then enforce simplex immediately.
+        self.state["S"] += adv_gain
+        projection_triggered_after_governor = self.project_to_simplex()
 
         raw_state = {k: float(v) for k, v in self.state.items()}
-        # After simplex normalization and before settlement.
-        safety_projection_triggered = self.project_to_simplex()
+        print("RAW STATE:", raw_state)
+        # Enforce simplex before persistence.
+        projection_triggered_before_persistence = self.project_to_simplex()
         projected_state = {k: float(v) for k, v in self.state.items()}
+        print("PROJECTED STATE:", self.state)
+
+        safety_projection_triggered = (
+            projection_triggered_after_transduction
+            or projection_triggered_after_governor
+            or projection_triggered_before_persistence
+        )
         projection_magnitude = math.sqrt(
             sum((raw_state[k] - projected_state[k]) ** 2 for k in ["C", "R", "S"])
         )
         if safety_projection_triggered:
             print(f"[SAFETY] Simplex projection applied. State: {self.state}")
 
-        # TASK B.4: Post-normalization constitutional guard
-        M_final = min(self.state.values())
-        if M_final < self.tau:
-            self.is_recovering = True
-            print(f"[GUARD] Post-normalization M={M_final:.4f} below tau. Recovery triggered.")
+        # Critical invariant guard before returning state.
+        if abs(sum(self.state.values()) - 1.0) > 1e-6 or min(self.state.values()) < 0.05:
+            guard_projection_triggered = self.project_to_simplex()
+            safety_projection_triggered = safety_projection_triggered or guard_projection_triggered
+            print("[GUARD] Invariant drift detected, projection re-applied.")
+
+        # Enforce simplex again before persistence.
+        projection_triggered_pre_settle = self.project_to_simplex()
+        safety_projection_triggered = safety_projection_triggered or projection_triggered_pre_settle
 
         governed_response = llm_response
         receipt = self.settle(
@@ -374,6 +345,11 @@ class SovereignKernel:
             projected_state=projected_state,
         )
         print(f"[SPAN 4] Receipt filed. M={receipt['stability_margin']} | Constit: {receipt['constitutional']}")
+
+        # Enforce simplex again before return.
+        projection_triggered_before_return = self.project_to_simplex()
+        safety_projection_triggered = safety_projection_triggered or projection_triggered_before_return
+        receipt["safety_projection_triggered"] = safety_projection_triggered
 
         return {
             "status": "Success",
