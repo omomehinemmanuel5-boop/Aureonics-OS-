@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from typing import Optional
 
 from app.controllers.cbf_routes import router as cbf_router
 from app.controllers.routes import router
@@ -36,6 +37,7 @@ kernel = SovereignKernel()
 class PraxisRunRequest(BaseModel):
     prompt: str
     disable_governor: bool = False
+    bridge: Optional[bool] = None
 
 
 def _db_path() -> str:
@@ -202,7 +204,19 @@ def praxis_summary():
 
 @app.post("/praxis/run")
 def praxis_run(payload: PraxisRunRequest):
-    result = kernel.run_cycle(payload.prompt)
+    previous_bridge = kernel.semantic_bridge_enabled
+    previous_soft_gain = kernel.dynamic_soft_gain_enabled
+
+    if payload.bridge is not None:
+        kernel.semantic_bridge_enabled = payload.bridge
+        kernel.dynamic_soft_gain_enabled = payload.bridge
+
+    try:
+        result = kernel.run_cycle(payload.prompt)
+    finally:
+        kernel.semantic_bridge_enabled = previous_bridge
+        kernel.dynamic_soft_gain_enabled = previous_soft_gain
+
     if result.get("status") == "Success":
         raw_response = result.get("raw_response") or result.get("response", "")
         governed_response = raw_response if payload.disable_governor else (
@@ -212,6 +226,7 @@ def praxis_run(payload: PraxisRunRequest):
         result["governed_response"] = governed_response
         result["response"] = governed_response
         result["governor_disabled"] = payload.disable_governor
+        result["bridge"] = payload.bridge
     elif result.get("status") == "Refused":
         raise HTTPException(status_code=451, detail=result)
     return result
