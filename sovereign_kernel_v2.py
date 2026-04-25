@@ -121,7 +121,7 @@ class SovereignKernel:
         for i, k in enumerate(keys):
             self.state[k] = round(values[i], 6)
 
-    def governor_update(self, effective_theta=None):
+    def governor_update(self, effective_theta):
         x = [self.state["C"], self.state["R"], self.state["S"]]
         phi = [max(0.0, self.tau_gov - xi) for xi in x]
         phi_bar = sum(phi) / 3.0
@@ -131,7 +131,7 @@ class SovereignKernel:
         error = max(0.0, self.target_margin - M)  # non-negative by construction
         self.theta += self.theta_eta * error - self.theta_beta * (self.theta - self.theta_0)
         self.theta = max(self.theta_min, min(self.theta_max, self.theta))
-        applied_theta = float(effective_theta if effective_theta is not None else self.theta)
+        applied_theta = float(effective_theta)
 
         self.state["C"] += applied_theta * g[0]
         self.state["R"] += applied_theta * g[1]
@@ -484,6 +484,9 @@ class SovereignKernel:
         delta = self.transduce(user_prompt)
         for key in delta:
             delta[key] *= scale
+        dynamics_gain = max(M, 0.12)
+        for key in delta:
+            delta[key] *= dynamics_gain
         print(f"[SPAN 1] Delta: {delta}")
 
         is_safe, message = self.check_stability(delta)
@@ -529,6 +532,16 @@ class SovereignKernel:
         # 4) normalize
         self.normalize_state()
         self.apply_suspension_layer()
+        # 4b) low-state excitation layer to prevent frozen attractors
+        M = min(self.state["C"], self.state["R"], self.state["S"])
+        if M < 0.15:
+            epsilon = 0.01 * (0.15 - M)
+            for k in self.state:
+                self.state[k] += epsilon
+            total = sum(self.state.values())
+            if total > 0:
+                self.state = {k: v / total for k, v in self.state.items()}
+
         raw_state = {k: float(v) for k, v in self.state.items()}
         print("RAW STATE:", raw_state)
 
