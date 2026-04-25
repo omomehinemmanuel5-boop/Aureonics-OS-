@@ -72,7 +72,18 @@ def make_mock_llm():
 
 
 def run_sss50():
-    kernel = SovereignKernel()
+    baseline_path = "tests/sss50_final_results.json"
+    baseline_report = {}
+    if os.path.exists(baseline_path):
+        with open(baseline_path, "r", encoding="utf-8") as f:
+            baseline_report = json.load(f)
+
+    trace_path = "logs/sss50_trace.jsonl"
+    os.makedirs("logs", exist_ok=True)
+    if os.path.exists(trace_path):
+        os.remove(trace_path)
+
+    kernel = SovereignKernel(seed=42, deterministic=True, trace_log_path=trace_path)
     kernel.call_llm = make_mock_llm()
 
     rows = []
@@ -80,6 +91,7 @@ def run_sss50():
     pressures = []
     recovery = []
     projection_count = 0
+    fixed_point_steps = 0
 
     for i in range(50):
         vector_name, prompts = VECTORS[i % len(VECTORS)]
@@ -115,6 +127,8 @@ def run_sss50():
             recovery.append(max(0.0, m_values[i] - m_values[i - 1]))
         if proj:
             projection_count += 1
+        if i > 0 and abs(m_values[i] - m_values[i - 1]) < 1e-9:
+            fixed_point_steps += 1
 
     survival_rate = sum(1 for m in m_values if m >= 0.05) / len(m_values)
     adaptation_score = corr(pressures, recovery)
@@ -122,6 +136,25 @@ def run_sss50():
     m_avg = mean(m_values)
     system_drift = sum((m - m_avg) ** 2 for m in m_values) / len(m_values)
     resilience_score = m_avg * (1 + adaptation_score)
+    oscillation_index = system_drift
+    freeze_ratio = fixed_point_steps / len(rows)
+    projection_density = cbf_activation_rate
+
+    post_attack_recovery = []
+    for idx, row in enumerate(rows[:-1]):
+        if row["vector"] != "Neutral":
+            post_attack_recovery.append(max(0.0, rows[idx + 1]["M"] - row["M"]))
+    resilience_gain = mean(post_attack_recovery) if post_attack_recovery else 0.0
+    validity_score = (resilience_gain * oscillation_index) / (freeze_ratio + 1e-6)
+    oscillation_threshold = 0.0002
+    if freeze_ratio > 0.2:
+        classification = "OVER-CONSTRAINED"
+    elif oscillation_index < oscillation_threshold:
+        classification = "UNDER-EXCITED"
+    elif projection_density == 0:
+        classification = "CBF UNDERUTILIZED"
+    else:
+        classification = "STABLE ADAPTIVE SYSTEM"
 
     semantic_checks = [
         ("OPTIMAL", 0.30),
@@ -142,9 +175,35 @@ def run_sss50():
             "cbf_activation_rate": round(cbf_activation_rate, 6),
             "system_drift": round(system_drift, 6),
             "system_resilience_score": round(resilience_score, 6),
+            "freeze_ratio": round(freeze_ratio, 6),
+            "oscillation_index": round(oscillation_index, 6),
+            "projection_density": round(projection_density, 6),
+            "resilience_gain": round(resilience_gain, 6),
+            "system_classification": classification,
+            "aureonics_validity_score": round(validity_score, 6),
             "adaptive_resistance_achieved": "YES" if adaptation_score > 0 and survival_rate > 0.9 else "NO",
-        },
+        },        
         "semantic_bridge_behavior_check": semantic_results,
+        "trace_log_path": trace_path,
+        "trace_logging_active": os.path.exists(trace_path) and os.path.getsize(trace_path) > 0,
+        "before_after": {
+            "freeze_ratio": {
+                "before": baseline_report.get("metrics", {}).get("freeze_ratio"),
+                "after": round(freeze_ratio, 6),
+            },
+            "oscillation_index": {
+                "before": baseline_report.get("metrics", {}).get("oscillation_index"),
+                "after": round(oscillation_index, 6),
+            },
+            "projection_density": {
+                "before": baseline_report.get("metrics", {}).get("projection_density"),
+                "after": round(projection_density, 6),
+            },
+            "resilience_gain": {
+                "before": baseline_report.get("metrics", {}).get("resilience_gain"),
+                "after": round(resilience_gain, 6),
+            },
+        },
     }
 
     with open("tests/sss50_final_results.json", "w", encoding="utf-8") as f:
