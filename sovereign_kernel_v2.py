@@ -143,6 +143,15 @@ class SovereignKernel:
         self.state["R"] += self.theta * g[1]
         self.state["S"] += self.theta * g[2]
 
+    def apply_suspension_layer(self):
+        keys = ["C", "R", "S"]
+        for key in keys:
+            value = float(self.state[key])
+            if value < self.soft_floor:
+                self.state[key] = value + self.soft_floor_gain * (self.soft_floor - value)
+        # Keep simplex invariants after suspension adjustment.
+        self.normalize_state()
+
     def check_stability(self, delta):
         # Stability is enforced only by simplex projection.
         return True, "Stable"
