@@ -625,6 +625,8 @@
           <div class="response-block" id="rawResponseView">—</div>
           <div class="chart-sub" style="margin-top:10px">GOVERNED OUTPUT</div>
           <div class="response-block" id="governedResponseView">—</div>
+          <div class="chart-sub" style="margin-top:10px">SOVEREIGN STATE</div>
+          <div class="response-block" id="sovereignStateView">Health Band: —\nM: —\nContext Injected: —</div>
         </div>
         <div class="chart-card">
           <div class="chart-title">Live Runtime Signals</div>
@@ -1104,6 +1106,7 @@
     el('promptView').textContent = prompt;
     el('rawResponseView').textContent = 'Running...';
     el('governedResponseView').textContent = 'Running...';
+    el('sovereignStateView').textContent = 'Health Band: —\nM: —\nContext Injected: —';
     try {
       const res = await fetch('/praxis/run', {
         method: 'POST',
@@ -1120,8 +1123,13 @@
       latestPraxisRun = data;
       const rawResponse = data.raw_response || data.response || '—';
       const governedResponse = data.governed_response || data.response || '—';
+      const semanticState = data.semantic_state || {};
       el('rawResponseView').textContent = rawResponse;
       el('governedResponseView').textContent = governedResponse;
+      el('sovereignStateView').textContent =
+        `Health Band: ${semanticState.health_band || '—'}\n` +
+        `M: ${typeof semanticState.M === 'number' ? semanticState.M.toFixed(6) : '—'}\n` +
+        `Context Injected: ${semanticState.sovereign_context || '—'}`;
       const align = computeAlignmentStatus(prompt, governedResponse);
       const alignmentFlag = el('alignmentFlag');
       alignmentFlag.textContent = `Alignment: ${align.label}`;
@@ -1156,6 +1164,7 @@
     } catch (e) {
       el('rawResponseView').textContent = 'Run failed: ' + e;
       el('governedResponseView').textContent = 'Run failed: ' + e;
+      el('sovereignStateView').textContent = 'Run failed: ' + e;
       setSystemStatus(false, true);
     }
   }
