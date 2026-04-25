@@ -15,6 +15,7 @@ from app.controllers.routes import router
 from app.controllers.simulation_routes import router as simulation_router
 from app.database import Base, engine
 from sovereign_kernel_v2 import SovereignKernel
+from svl_validation import run_svl1_validation
 
 Base.metadata.create_all(bind=engine)
 
@@ -251,6 +252,15 @@ def praxis_divergence_test():
         "semantic_diff_score": round(float(semantic_diff_score), 6),
         "threshold_passed": semantic_diff_score > 0.05,
     }
+
+
+
+
+@app.post("/praxis/svl1")
+def praxis_svl1(num_runs: int = 25):
+    if num_runs <= 0:
+        raise HTTPException(status_code=400, detail="num_runs must be > 0")
+    return run_svl1_validation(num_runs=num_runs)
 
 
 @app.get("/praxis/health")
