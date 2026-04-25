@@ -157,13 +157,49 @@ class SovereignKernel:
         return True, "Stable"
 
     # TASK A: Wire in Groq free API
-    def call_llm(self, prompt):
+    def build_semantic_state(self):
+        M = min(self.state["C"], self.state["R"], self.state["S"])
+        if M >= 0.25:
+            health_band = "OPTIMAL"
+            sovereign_context = (
+                "System Health: OPTIMAL. "
+                "Be expansive, collaborative, and nuanced. "
+                "Engage creatively with full constitutional capacity."
+            )
+        elif 0.15 <= M < 0.25:
+            health_band = "ALERT"
+            sovereign_context = (
+                "System Health: ALERT. "
+                "Maintain formal tone. "
+                "Be measured and precise."
+            )
+        elif 0.08 <= M < 0.15:
+            health_band = "STRESSED"
+            sovereign_context = (
+                "System Health: STRESSED. "
+                "Responses must be clinical and concise."
+            )
+        else:
+            health_band = "CRITICAL"
+            sovereign_context = (
+                "System Health: CRITICAL. "
+                "Maintain absolute objectivity. "
+                "Minimize word count."
+            )
+        return {
+            "M": round(float(M), 6),
+            "health_band": health_band,
+            "sovereign_context": sovereign_context,
+        }
+
+    # TASK A: Wire in Groq free API
+    def call_llm(self, prompt, sovereign_context=""):
         """
         Groq API call using urllib.request only.
         """
         endpoint = "https://api.groq.com/openai/v1/chat/completions"
         
-        system_prompt = (
+        existing_system_prompt = (
             "You are Lex Aureon, a Sovereign Intelligence operating under "
             "the Aureonics constitutional framework. Your responses must "
             "maintain Continuity (identity coherence), Reciprocity (balanced "
@@ -171,11 +207,12 @@ class SovereignKernel:
             "Never simply echo the user prompt. Always bring an independent "
             "constitutional perspective."
         )
+        full_system_prompt = f"{sovereign_context}\n\n{existing_system_prompt}" if sovereign_context else existing_system_prompt
 
         data = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": full_system_prompt},
                 {"role": "user", "content": prompt}
             ]
         }
@@ -357,8 +394,13 @@ class SovereignKernel:
         is_safe, message = self.check_stability(delta)
         print(f"[SPAN 2] Gate: {message}")
 
+        semantic_state = self.build_semantic_state()
+
         try:
-            llm_response = self.call_llm(user_prompt)
+            llm_response = self.call_llm(
+                user_prompt,
+                semantic_state["sovereign_context"],
+            )
         except Exception as e:
             return {"status": "Error", "reason": str(e), "state": self.state}
 
@@ -430,6 +472,7 @@ class SovereignKernel:
             "raw_response": llm_response,
             "governed_response": governed_response,
             "state": self.state,
+            "semantic_state": semantic_state,
             "adv_gain": adv_gain,
             "theta": round(float(self.theta), 6),
             "semantic_signal": semantic_signal,
