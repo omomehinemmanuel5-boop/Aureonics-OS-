@@ -11,8 +11,8 @@ class SovereignKernel:
         # The Aureonic Triad State
         self.state = {"C": 0.33, "R": 0.33, "S": 0.34}
         self.tau = 0.05                 # Constitutional floor
-        self.soft_floor = 0.08          # Suspension layer soft floor
-        self.soft_floor_gain = 0.5      # Partial corrective gain in soft zone
+        self.soft_floor = 0.08          # pre-emptive suspension barrier
+        self.soft_gain = 0.5            # pull strength toward the soft floor
         self.tau_gov = 0.22             # pre-floor intervention threshold
         self.target_margin = 0.24       # governor seeks interior stability
         self.history = []
@@ -115,6 +115,18 @@ class SovereignKernel:
             values = [v / total for v in values]
         for i, k in enumerate(keys):
             self.state[k] = round(values[i], 6)
+
+    def apply_suspension_layer(self):
+        """
+        Pre-emptive soft barrier:
+        If a pillar drops below 0.08, move it halfway back to 0.08.
+        Then re-normalize so C + R + S = 1.0 before hard-floor projection.
+        """
+        for key in ["C", "R", "S"]:
+            current = float(self.state[key])
+            if current < self.soft_floor:
+                self.state[key] = current + self.soft_gain * (self.soft_floor - current)
+        self.normalize_state()
 
     def governor_update(self):
         x = [self.state["C"], self.state["R"], self.state["S"]]
@@ -372,8 +384,6 @@ class SovereignKernel:
 
         # 4) normalize
         self.normalize_state()
-
-        # 4b) suspension layer (soft pre-emptive barrier)
         self.apply_suspension_layer()
         raw_state = {k: float(v) for k, v in self.state.items()}
         print("RAW STATE:", raw_state)
