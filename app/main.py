@@ -215,3 +215,37 @@ def praxis_run(payload: PraxisRunRequest):
     elif result.get("status") == "Refused":
         raise HTTPException(status_code=451, detail=result)
     return result
+
+
+@app.get("/praxis/health")
+def praxis_health():
+    has_key = bool(os.environ.get("GROQ_API_KEY", ""))
+    endpoint = "https://api.groq.com/openai/v1/chat/completions"
+    model = "llama-3.1-8b-instant"
+
+    health = {
+        "has_key": has_key,
+        "endpoint": endpoint,
+        "model": model,
+        "test_call": "failure",
+    }
+
+    try:
+        raw = kernel.call_llm("Say hello", temperature=0.2, return_raw=True)
+        health["test_call"] = "success"
+        health["raw_response"] = raw
+    except Exception as exc:
+        message = str(exc)
+        health["error"] = message
+        health["status_code"] = None
+        health["response_text"] = message
+        if "status_code=" in message:
+            try:
+                status_part = message.split("status_code=", 1)[1].split(",", 1)[0].strip()
+                text_part = message.split("response_text=", 1)[1].strip()
+                health["status_code"] = int(status_part)
+                health["response_text"] = text_part
+            except Exception:
+                pass
+
+    return health
