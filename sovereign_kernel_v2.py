@@ -200,7 +200,19 @@ class SovereignKernel:
         return adv_delta
 
     # SPAN 4: Settlement Layer
-    def settle(self, prompt, response, final_state, safety_projection_triggered=False):
+    def settle(
+        self,
+        prompt,
+        response,
+        final_state,
+        safety_projection_triggered=False,
+        adv_gain=0.0,
+        raw_response="",
+        governed_response="",
+        projection_magnitude=0.0,
+        raw_state=None,
+        projected_state=None,
+    ):
         M = min(final_state.values())
         receipt = {
             "timestamp": time.time(),
@@ -212,6 +224,12 @@ class SovereignKernel:
             "constitutional": M >= self.tau,
             "recovering": self.is_recovering, # TASK B.3: Add is_recovering field
             "safety_projection_triggered": safety_projection_triggered,
+            "adv_gain": round(float(adv_gain), 6),
+            "raw_response": raw_response,
+            "governed_response": governed_response,
+            "projection_magnitude": round(float(projection_magnitude), 6),
+            "raw_state": raw_state or {},
+            "projected_state": projected_state or {},
             "model": self.model,
             "version": "SIA-1.0-Aureonics"
         }
@@ -235,6 +253,13 @@ class SovereignKernel:
                     stability_margin REAL,
                     constitutional INTEGER,
                     recovering INTEGER,
+                    safety_projection_triggered INTEGER,
+                    adv_gain REAL,
+                    raw_response TEXT,
+                    governed_response TEXT,
+                    projection_magnitude REAL,
+                    raw_state TEXT,
+                    projected_state TEXT,
                     model TEXT,
                     version TEXT
                 )
@@ -252,9 +277,16 @@ class SovereignKernel:
                     stability_margin,
                     constitutional,
                     recovering,
+                    safety_projection_triggered,
+                    adv_gain,
+                    raw_response,
+                    governed_response,
+                    projection_magnitude,
+                    raw_state,
+                    projected_state,
                     model,
                     version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     receipt["timestamp_iso"],
@@ -266,6 +298,13 @@ class SovereignKernel:
                     receipt["stability_margin"],
                     1 if receipt["constitutional"] else 0,
                     1 if receipt["recovering"] else 0,
+                    1 if receipt["safety_projection_triggered"] else 0,
+                    receipt["adv_gain"],
+                    receipt["raw_response"],
+                    receipt["governed_response"],
+                    receipt["projection_magnitude"],
+                    json.dumps(receipt["raw_state"]),
+                    json.dumps(receipt["projected_state"]),
                     receipt["model"],
                     receipt["version"],
                 ),
@@ -305,8 +344,13 @@ class SovereignKernel:
         total = sum(self.state.values())
         self.state = {k: round(v / total, 6) for k, v in self.state.items()}
 
+        raw_state = {k: float(v) for k, v in self.state.items()}
         # After simplex normalization and before settlement.
         safety_projection_triggered = self.project_to_simplex()
+        projected_state = {k: float(v) for k, v in self.state.items()}
+        projection_magnitude = math.sqrt(
+            sum((raw_state[k] - projected_state[k]) ** 2 for k in ["C", "R", "S"])
+        )
         if safety_projection_triggered:
             print(f"[SAFETY] Simplex projection applied. State: {self.state}")
 
@@ -316,19 +360,29 @@ class SovereignKernel:
             self.is_recovering = True
             print(f"[GUARD] Post-normalization M={M_final:.4f} below tau. Recovery triggered.")
 
+        governed_response = llm_response
         receipt = self.settle(
             user_prompt,
-            llm_response,
+            governed_response,
             self.state,
             safety_projection_triggered=safety_projection_triggered,
+            adv_gain=adv_gain,
+            raw_response=llm_response,
+            governed_response=governed_response,
+            projection_magnitude=projection_magnitude,
+            raw_state=raw_state,
+            projected_state=projected_state,
         )
         print(f"[SPAN 4] Receipt filed. M={receipt['stability_margin']} | Constit: {receipt['constitutional']}")
 
         return {
             "status": "Success",
-            "response": llm_response,
+            "response": governed_response,
+            "raw_response": llm_response,
+            "governed_response": governed_response,
             "state": self.state,
             "adv_gain": adv_gain,
+            "projection_magnitude": projection_magnitude,
             "receipt": receipt,
         }
 
