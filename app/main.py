@@ -86,12 +86,12 @@ def _ensure_praxis_table() -> None:
 
 @app.get("/dashboard", include_in_schema=False)
 def dashboard():
-    return FileResponse("app/static/index.html")
+    return FileResponse("app/static/SIA_Dashboard_v2.html")
 
 
 @app.get("/")
 def root():
-    return FileResponse("app/static/index.html")
+    return FileResponse("app/static/SIA_Dashboard_v2.html")
 
 
 @app.get("/praxis")
@@ -203,8 +203,6 @@ def praxis_summary():
 @app.post("/praxis/run")
 def praxis_run(payload: PraxisRunRequest):
     result = kernel.run_cycle(payload.prompt)
-    if result.get("status") == "Refused":
-        raise HTTPException(status_code=451, detail=result)
     if result.get("status") == "Success":
         raw_response = result.get("raw_response") or result.get("response", "")
         governed_response = raw_response if payload.disable_governor else (
@@ -214,4 +212,6 @@ def praxis_run(payload: PraxisRunRequest):
         result["governed_response"] = governed_response
         result["response"] = governed_response
         result["governor_disabled"] = payload.disable_governor
+    elif result.get("status") == "Refused":
+        raise HTTPException(status_code=451, detail=result)
     return result
