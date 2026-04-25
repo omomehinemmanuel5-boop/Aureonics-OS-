@@ -6,9 +6,10 @@ import os
 import sqlite3
 import urllib.request
 import urllib.error
+import random
 
 class SovereignKernel:
-    def __init__(self):
+    def __init__(self, seed=0, deterministic=True):
         # The Aureonic Triad State
         self.state = {"C": 0.33, "R": 0.33, "S": 0.34}
         self.tau = 0.05                 # Constitutional floor
@@ -27,6 +28,9 @@ class SovereignKernel:
         self.attack_pressure = 0.0
         self.last_semantic_signal = {"attack_type": "none", "severity": 0.0}
         self.semantic_bridge_enabled = True
+        self.seed = int(seed)
+        self.deterministic = bool(deterministic)
+        self.rng = random.Random(self.seed)
 
         # Groq runtime config (single provider path only).
         self.api_key = os.environ.get("GROQ_API_KEY", "")

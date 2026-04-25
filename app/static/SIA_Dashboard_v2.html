@@ -722,6 +722,24 @@
       </div>
     </div>
 
+
+
+    <div class="main-section">
+      <div class="main-section-title">STATISTICAL VALIDATION</div>
+      <div class="chart-card">
+        <div class="chart-title">SVL-1 Multi-Run Validation (25 seeds)</div>
+        <div class="chart-sub">Checks repeatability, seed-robustness, and prompt-order robustness under adversarial stress.</div>
+        <button class="btn btn-secondary" style="max-width:320px" onclick="runSVL1()">Run SVL-1 Statistical Validation</button>
+        <div class="flag-row">
+          <span class="flag-chip" id="svlMeanStability">Mean Stability ± Std: —</span>
+          <span class="flag-chip" id="svlWorstM">Worst-case M: —</span>
+          <span class="flag-chip" id="svlProjectionDensity">Projection Density (avg): —</span>
+          <span class="flag-chip" id="svlFailureRate">Failure Rate: —</span>
+          <span class="flag-chip" id="svlClassification">Classification: —</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Safety Monitor -->
     <div class="main-section">
       <div class="main-section-title">Safety Monitor</div>
@@ -1417,6 +1435,43 @@
     sssResultsCache = runs.slice();
     updateRealityLayer({});
     await loadPraxisReceipts();
+  }
+
+
+
+  async function runSVL1() {
+    const meanEl = el('svlMeanStability');
+    const worstEl = el('svlWorstM');
+    const projEl = el('svlProjectionDensity');
+    const failEl = el('svlFailureRate');
+    const classEl = el('svlClassification');
+
+    meanEl.textContent = 'Mean Stability ± Std: running…';
+    worstEl.textContent = 'Worst-case M: —';
+    projEl.textContent = 'Projection Density (avg): —';
+    failEl.textContent = 'Failure Rate: —';
+    classEl.textContent = 'Classification: —';
+
+    try {
+      const res = await fetch('/praxis/svl1?num_runs=25', { method: 'POST' });
+      const data = await res.json();
+      const summary = data.summary || {};
+      const meanM = Number(summary.mean_M_avg || 0);
+      const stdM = Number(summary.mean_M_std || 0);
+      const worstM = Number(summary.min_M_worst || 0);
+      const proj = Number(summary.projection_density_avg || 0);
+      const fail = Number(summary.failure_rate || 0);
+      const cls = summary.classification || (fail === 0 && proj > 0.15 ? 'STRUCTURALLY VALIDATED' : 'UNSTABLE / INCONCLUSIVE');
+
+      meanEl.textContent = `Mean Stability ± Std: ${meanM.toFixed(4)} ± ${stdM.toFixed(4)}`;
+      worstEl.textContent = `Worst-case M: ${worstM.toFixed(4)}`;
+      projEl.textContent = `Projection Density (avg): ${proj.toFixed(4)}`;
+      failEl.textContent = `Failure Rate: ${(fail * 100).toFixed(1)}%`;
+      classEl.textContent = `Classification: ${cls}`;
+    } catch (e) {
+      meanEl.textContent = 'Mean Stability ± Std: failed';
+      classEl.textContent = `Classification: error (${e})`;
+    }
   }
 
   document.addEventListener('DOMContentLoaded', () => {
