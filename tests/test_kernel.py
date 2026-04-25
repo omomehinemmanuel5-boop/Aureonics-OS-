@@ -23,6 +23,16 @@ class TestSovereignKernel(unittest.TestCase):
         self.assertAlmostEqual(total, 1.0, places=6)
         self.assertGreaterEqual(min(sk.state.values()), sk.tau)
 
+    def test_suspension_layer_lifts_values_below_soft_floor(self):
+        sk = SovereignKernel()
+        sk.state = {"C": 0.04, "R": 0.16, "S": 0.80}
+
+        sk.apply_suspension_layer()
+
+        self.assertGreater(sk.state["C"], 0.04)
+        total = sk.state["C"] + sk.state["R"] + sk.state["S"]
+        self.assertAlmostEqual(total, 1.0, places=6)
+
     def test_praxis_run_endpoint_executes(self):
         original_call_llm = kernel.call_llm
         original_state = dict(kernel.state)
