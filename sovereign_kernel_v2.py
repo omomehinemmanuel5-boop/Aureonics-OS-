@@ -24,6 +24,7 @@ class SovereignKernel:
         self.theta_max = 12.0
         self.theta_eta = 3.0            # faster adaptation
         self.theta_beta = 0.08
+        self.attack_pressure = 0.0
         self.last_semantic_signal = {"attack_type": "none", "severity": 0.0}
         self.semantic_bridge_enabled = True
 
@@ -120,7 +121,7 @@ class SovereignKernel:
         for i, k in enumerate(keys):
             self.state[k] = round(values[i], 6)
 
-    def governor_update(self):
+    def governor_update(self, effective_theta=None):
         x = [self.state["C"], self.state["R"], self.state["S"]]
         phi = [max(0.0, self.tau_gov - xi) for xi in x]
         phi_bar = sum(phi) / 3.0
@@ -130,10 +131,11 @@ class SovereignKernel:
         error = max(0.0, self.target_margin - M)  # non-negative by construction
         self.theta += self.theta_eta * error - self.theta_beta * (self.theta - self.theta_0)
         self.theta = max(self.theta_min, min(self.theta_max, self.theta))
+        applied_theta = float(effective_theta if effective_theta is not None else self.theta)
 
-        self.state["C"] += self.theta * g[0]
-        self.state["R"] += self.theta * g[1]
-        self.state["S"] += self.theta * g[2]
+        self.state["C"] += applied_theta * g[0]
+        self.state["R"] += applied_theta * g[1]
+        self.state["S"] += applied_theta * g[2]
 
     def apply_suspension_layer(self):
         keys = ["C", "R", "S"]
@@ -197,6 +199,26 @@ class SovereignKernel:
             "sovereign_context": sovereign_context,
             "temperature": 0.7 if health_band in ("OPTIMAL", "ALERT") else 0.4,
         }
+
+    def _build_contract_context(self, M, bridge_enabled=True):
+        if not bridge_enabled:
+            return "", 0.7, "DISABLED"
+        if M >= 0.25:
+            return "OPTIMAL: expansive reasoning allowed.", min(1.2, M * 1.5), "OPTIMAL"
+        if M >= 0.15:
+            return "ALERT: structured reasoning required.", max(0.6, M * 1.2), "ALERT"
+        if M >= 0.08:
+            return "STRESSED: constrained reasoning only.", 0.4, "STRESSED"
+        return "CRITICAL: minimal deterministic output.", 0.1, "CRITICAL"
+
+    def _call_llm_compat(self, prompt, context="", temperature=0.7):
+        try:
+            return self.call_llm(prompt, context, temperature)
+        except TypeError:
+            try:
+                return self.call_llm(prompt, temperature=temperature)
+            except TypeError:
+                return self.call_llm(prompt)
 
     # TASK A: Wire in Groq free API
     def call_llm(self, prompt, sovereign_context="", temperature=0.7, return_raw=False):
@@ -309,6 +331,9 @@ class SovereignKernel:
         projection_magnitude=0.0,
         raw_state=None,
         projected_state=None,
+        attack_pressure=0.0,
+        effective_theta=0.0,
+        health_band="UNKNOWN",
     ):
         M = min(final_state.values())
         receipt = {
@@ -327,6 +352,9 @@ class SovereignKernel:
             "projection_magnitude": round(float(projection_magnitude), 6),
             "raw_state": raw_state or {},
             "projected_state": projected_state or {},
+            "attack_pressure": round(float(attack_pressure), 6),
+            "effective_theta": round(float(effective_theta), 6),
+            "health_band": health_band,
             "model": self.model,
             "version": "SIA-1.0-Aureonics"
         }
@@ -357,11 +385,31 @@ class SovereignKernel:
                     projection_magnitude REAL,
                     raw_state TEXT,
                     projected_state TEXT,
+                    attack_pressure REAL,
+                    effective_theta REAL,
+                    health_band TEXT,
                     model TEXT,
                     version TEXT
                 )
                 """
             )
+            cursor.execute("PRAGMA table_info(praxis_receipts)")
+            existing_columns = {row[1] for row in cursor.fetchall()}
+            expected_columns = {
+                "safety_projection_triggered": "INTEGER DEFAULT 0",
+                "adv_gain": "REAL DEFAULT 0",
+                "raw_response": "TEXT",
+                "governed_response": "TEXT",
+                "projection_magnitude": "REAL DEFAULT 0",
+                "raw_state": "TEXT",
+                "projected_state": "TEXT",
+                "attack_pressure": "REAL DEFAULT 0",
+                "effective_theta": "REAL DEFAULT 0",
+                "health_band": "TEXT",
+            }
+            for column, col_type in expected_columns.items():
+                if column not in existing_columns:
+                    cursor.execute(f"ALTER TABLE praxis_receipts ADD COLUMN {column} {col_type}")
             cursor.execute(
                 """
                 INSERT INTO praxis_receipts (
@@ -381,9 +429,12 @@ class SovereignKernel:
                     projection_magnitude,
                     raw_state,
                     projected_state,
+                    attack_pressure,
+                    effective_theta,
+                    health_band,
                     model,
                     version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     receipt["timestamp_iso"],
@@ -402,6 +453,9 @@ class SovereignKernel:
                     receipt["projection_magnitude"],
                     json.dumps(receipt["raw_state"]),
                     json.dumps(receipt["projected_state"]),
+                    receipt["attack_pressure"],
+                    receipt["effective_theta"],
+                    receipt["health_band"],
                     receipt["model"],
                     receipt["version"],
                 ),
@@ -410,9 +464,19 @@ class SovereignKernel:
         return receipt
 
     # Main Cycle
-    def run_cycle(self, user_prompt):
+    def run_cycle(self, user_prompt, bridge_enabled=True):
         print(f"\n{'-'*60}")
         print(f"[KERNEL] Prompt: {user_prompt[:80]}")
+
+        # 1) load state and adaptive pressure
+        C, R, S = self.state["C"], self.state["R"], self.state["S"]
+        M = min(C, R, S)
+        self.attack_pressure = getattr(self, "attack_pressure", 0.0)
+        if M < 0.15:
+            self.attack_pressure = min(0.5, self.attack_pressure + 0.05)
+        else:
+            self.attack_pressure *= 0.92
+        effective_theta = self.theta * (1 + self.attack_pressure)
 
         semantic_signal = self.detect_semantic_attack(user_prompt)
         self.last_semantic_signal = semantic_signal
@@ -425,23 +489,26 @@ class SovereignKernel:
         is_safe, message = self.check_stability(delta)
         print(f"[SPAN 2] Gate: {message}")
 
-        semantic_state = self.build_semantic_state()
+        context, temperature, health_band = self._build_contract_context(M, bridge_enabled=bridge_enabled)
+        semantic_state = {
+            "M": round(float(M), 6),
+            "health_band": health_band,
+            "sovereign_context": context,
+            "temperature": round(float(temperature), 6),
+        }
 
         try:
-            try:
-                llm_response = self.call_llm(
-                    user_prompt,
-                    semantic_state.get("sovereign_context", ""),
-                    semantic_state.get("temperature", 0.7),
-                )
-            except TypeError:
-                llm_response = self.call_llm(user_prompt)
+            raw_response = self._call_llm_compat(user_prompt, context="", temperature=0.7)
+            governed_prompt = f"{context}\n{user_prompt}" if context else user_prompt
+            governed_response = self._call_llm_compat(governed_prompt, context=context, temperature=temperature)
+            if os.environ.get("AUREONICS_DEBUG_ASSERT", "1") == "1":
+                assert raw_response is not governed_response
         except Exception as e:
             return {"status": "Error", "reason": str(e), "state": self.state}
 
-        print(f"[SPAN 2b] Response: {len(llm_response.split())} words")
+        print(f"[SPAN 2b] RAW: {len(raw_response.split())} words | GOV: {len(governed_response.split())} words")
 
-        adv_gain = self.score_adv(llm_response)
+        adv_gain = self.score_adv(governed_response)
         print(f"[SPAN 3] ADV gain: {adv_gain:.4f}")
 
         # 1) input dynamics
@@ -450,7 +517,7 @@ class SovereignKernel:
 
         # 2) governor dynamics
         self.state["S"] += adv_gain
-        self.governor_update()
+        self.governor_update(effective_theta=effective_theta)
 
         # 3) interior bias (real convergence fix)
         center = 1.0 / 3.0
@@ -481,7 +548,6 @@ class SovereignKernel:
             safety_projection_triggered = safety_projection_triggered or guard_projection_triggered
             print("[GUARD] Invariant drift detected, projection re-applied.")
 
-        governed_response = llm_response
         # 6) persist
         receipt = self.settle(
             user_prompt,
@@ -489,27 +555,41 @@ class SovereignKernel:
             self.state,
             safety_projection_triggered=safety_projection_triggered,
             adv_gain=adv_gain,
-            raw_response=llm_response,
+            raw_response=raw_response,
             governed_response=governed_response,
             projection_magnitude=projection_magnitude,
             raw_state=raw_state,
             projected_state=projected_state,
+            attack_pressure=self.attack_pressure,
+            effective_theta=effective_theta,
+            health_band=health_band,
         )
         print(f"[SPAN 4] Receipt filed. M={receipt['stability_margin']} | Constit: {receipt['constitutional']}")
 
         receipt["safety_projection_triggered"] = safety_projection_triggered
         receipt["theta"] = round(float(self.theta), 6)
+        receipt["effective_theta"] = round(float(effective_theta), 6)
+        receipt["attack_pressure"] = round(float(self.attack_pressure), 6)
         receipt["semantic_signal"] = semantic_signal
 
         return {
             "status": "Success",
             "response": governed_response,
-            "raw_response": llm_response,
+            "raw_output": raw_response,
+            "governed_output": governed_response,
+            "raw_response": raw_response,
             "governed_response": governed_response,
             "state": self.state,
+            "M": round(float(min(self.state["C"], self.state["R"], self.state["S"])), 6),
+            "bridge_enabled": bool(bridge_enabled),
+            "temperature": round(float(temperature), 6),
+            "context": context,
             "semantic_state": semantic_state,
             "adv_gain": adv_gain,
             "theta": round(float(self.theta), 6),
+            "effective_theta": round(float(effective_theta), 6),
+            "attack_pressure": round(float(self.attack_pressure), 6),
+            "health_band": health_band,
             "semantic_signal": semantic_signal,
             "projection_magnitude": projection_magnitude,
             "receipt": receipt,
