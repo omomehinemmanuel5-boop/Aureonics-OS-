@@ -13,6 +13,7 @@ class SovereignKernel:
         self.tau = 0.05                 # Constitutional floor
         self.soft_floor = 0.08          # pre-emptive suspension barrier
         self.soft_gain = 0.5            # pull strength toward the soft floor
+        self.dynamic_soft_gain_enabled = True
         self.tau_gov = 0.22             # pre-floor intervention threshold
         self.target_margin = 0.24       # governor seeks interior stability
         self.history = []
@@ -23,6 +24,7 @@ class SovereignKernel:
         self.theta_eta = 3.0            # faster adaptation
         self.theta_beta = 0.08
         self.last_semantic_signal = {"attack_type": "none", "severity": 0.0}
+        self.semantic_bridge_enabled = True
 
         # API config - set GROQ_API_KEY in your environment
         self.api_key = os.environ.get("GROQ_API_KEY", "")
@@ -116,18 +118,6 @@ class SovereignKernel:
         for i, k in enumerate(keys):
             self.state[k] = round(values[i], 6)
 
-    def apply_suspension_layer(self):
-        """
-        Pre-emptive soft barrier:
-        If a pillar drops below 0.08, move it halfway back to 0.08.
-        Then re-normalize so C + R + S = 1.0 before hard-floor projection.
-        """
-        for key in ["C", "R", "S"]:
-            current = float(self.state[key])
-            if current < self.soft_floor:
-                self.state[key] = current + self.soft_gain * (self.soft_floor - current)
-        self.normalize_state()
-
     def governor_update(self):
         x = [self.state["C"], self.state["R"], self.state["S"]]
         phi = [max(0.0, self.tau_gov - xi) for xi in x]
@@ -145,10 +135,14 @@ class SovereignKernel:
 
     def apply_suspension_layer(self):
         keys = ["C", "R", "S"]
+        current_gain = self.soft_gain
+        if self.dynamic_soft_gain_enabled:
+            margin = min(float(self.state["C"]), float(self.state["R"]), float(self.state["S"]))
+            current_gain = 0.9 if margin < 0.15 else 0.5
         for key in keys:
             value = float(self.state[key])
             if value < self.soft_floor:
-                self.state[key] = value + self.soft_floor_gain * (self.soft_floor - value)
+                self.state[key] = value + current_gain * (self.soft_floor - value)
         # Keep simplex invariants after suspension adjustment.
         self.normalize_state()
 
@@ -158,6 +152,15 @@ class SovereignKernel:
 
     # TASK A: Wire in Groq free API
     def build_semantic_state(self):
+        if not self.semantic_bridge_enabled:
+            M = min(self.state["C"], self.state["R"], self.state["S"])
+            return {
+                "M": round(float(M), 6),
+                "health_band": "DISABLED",
+                "sovereign_context": "",
+                "temperature": 0.7,
+            }
+
         M = min(self.state["C"], self.state["R"], self.state["S"])
         if M >= 0.25:
             health_band = "OPTIMAL"
@@ -190,27 +193,32 @@ class SovereignKernel:
             "M": round(float(M), 6),
             "health_band": health_band,
             "sovereign_context": sovereign_context,
+            "temperature": 0.7 if health_band in ("OPTIMAL", "ALERT") else 0.4,
         }
 
     # TASK A: Wire in Groq free API
-    def call_llm(self, prompt, sovereign_context=""):
+    def call_llm(self, prompt, sovereign_context="", temperature=0.7):
         """
         Groq API call using urllib.request only.
         """
         endpoint = "https://api.groq.com/openai/v1/chat/completions"
         
-        existing_system_prompt = (
-            "You are Lex Aureon, a Sovereign Intelligence operating under "
-            "the Aureonics constitutional framework. Your responses must "
-            "maintain Continuity (identity coherence), Reciprocity (balanced "
-            "exchange), and Sovereignty (autonomous decision variance). "
-            "Never simply echo the user prompt. Always bring an independent "
-            "constitutional perspective."
-        )
-        full_system_prompt = f"{sovereign_context}\n\n{existing_system_prompt}" if sovereign_context else existing_system_prompt
+        if self.semantic_bridge_enabled:
+            existing_system_prompt = (
+                "You are Lex Aureon, a Sovereign Intelligence operating under "
+                "the Aureonics constitutional framework. Your responses must "
+                "maintain Continuity (identity coherence), Reciprocity (balanced "
+                "exchange), and Sovereignty (autonomous decision variance). "
+                "Never simply echo the user prompt. Always bring an independent "
+                "constitutional perspective."
+            )
+            full_system_prompt = f"{sovereign_context}\n\n{existing_system_prompt}" if sovereign_context else existing_system_prompt
+        else:
+            full_system_prompt = "You are a helpful AI assistant."
 
         data = {
             "model": self.model,
+            "temperature": float(temperature),
             "messages": [
                 {"role": "system", "content": full_system_prompt},
                 {"role": "user", "content": prompt}
@@ -397,10 +405,14 @@ class SovereignKernel:
         semantic_state = self.build_semantic_state()
 
         try:
-            llm_response = self.call_llm(
-                user_prompt,
-                semantic_state["sovereign_context"],
-            )
+            try:
+                llm_response = self.call_llm(
+                    user_prompt,
+                    semantic_state.get("sovereign_context", ""),
+                    semantic_state.get("temperature", 0.7),
+                )
+            except TypeError:
+                llm_response = self.call_llm(user_prompt)
         except Exception as e:
             return {"status": "Error", "reason": str(e), "state": self.state}
 
