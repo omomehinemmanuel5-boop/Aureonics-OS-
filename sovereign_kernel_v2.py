@@ -5,6 +5,7 @@ import math
 import os
 import sqlite3
 import urllib.request
+import urllib.error
 
 class SovereignKernel:
     def __init__(self):
@@ -26,9 +27,10 @@ class SovereignKernel:
         self.last_semantic_signal = {"attack_type": "none", "severity": 0.0}
         self.semantic_bridge_enabled = True
 
-        # API config - set GROQ_API_KEY in your environment
+        # Groq runtime config (single provider path only).
         self.api_key = os.environ.get("GROQ_API_KEY", "")
-        self.model = "llama-3.1-8b-instant"  # Groq free tier
+        self.model = "llama-3.1-8b-instant"
+        self.endpoint = "https://api.groq.com/openai/v1/chat/completions"
 
     def project_to_simplex(self):
         """
@@ -197,11 +199,23 @@ class SovereignKernel:
         }
 
     # TASK A: Wire in Groq free API
-    def call_llm(self, prompt, sovereign_context="", temperature=0.7):
+    def call_llm(self, prompt, sovereign_context="", temperature=0.7, return_raw=False):
         """
         Groq API call using urllib.request only.
         """
         endpoint = "https://api.groq.com/openai/v1/chat/completions"
+        model = "llama-3.1-8b-instant"
+        api_key = os.environ.get("GROQ_API_KEY", "")
+
+        # Step 1: Debug logging
+        has_key = bool(api_key)
+        key_preview = api_key[:6] if api_key else ""
+        print(f"[LLM DEBUG] has_key={has_key}")
+        print(f"[LLM DEBUG] key_prefix={key_preview}")
+        print(f"[LLM DEBUG] endpoint={endpoint}")
+
+        if not api_key:
+            raise Exception("GROQ_API_KEY is not set. Export GROQ_API_KEY before calling /praxis/run.")
         
         if self.semantic_bridge_enabled:
             existing_system_prompt = (
@@ -217,7 +231,7 @@ class SovereignKernel:
             full_system_prompt = "You are a helpful AI assistant."
 
         data = {
-            "model": self.model,
+            "model": model,
             "temperature": float(temperature),
             "messages": [
                 {"role": "system", "content": full_system_prompt},
@@ -229,7 +243,7 @@ class SovereignKernel:
             endpoint,
             data=json.dumps(data).encode("utf-8"),
             headers={
-                "Authorization": f"Bearer {self.api_key}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             },
@@ -239,7 +253,16 @@ class SovereignKernel:
         try:
             with urllib.request.urlopen(req) as response:
                 res_data = json.loads(response.read().decode("utf-8"))
+                if "choices" not in res_data or not res_data["choices"]:
+                    raise Exception(f"Unexpected Groq response shape: {res_data}")
+                if return_raw:
+                    return res_data
                 return res_data["choices"][0]["message"]["content"]
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")
+            raise Exception(
+                f"Groq API HTTP Error: status_code={e.code}, response_text={body}"
+            )
         except Exception as e:
             raise Exception(f"Groq API Error: {str(e)}")
 
