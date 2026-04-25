@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import json
 
 from fastapi import FastAPI
 from fastapi import HTTPException
@@ -34,6 +35,7 @@ kernel = SovereignKernel()
 
 class PraxisRunRequest(BaseModel):
     prompt: str
+    disable_governor: bool = False
 
 
 def _db_path() -> str:
@@ -56,11 +58,29 @@ def _ensure_praxis_table() -> None:
                 stability_margin REAL,
                 constitutional INTEGER,
                 recovering INTEGER,
+                safety_projection_triggered INTEGER,
+                adv_gain REAL,
+                raw_response TEXT,
+                governed_response TEXT,
                 model TEXT,
                 version TEXT
             )
             """
         )
+        cursor.execute("PRAGMA table_info(praxis_receipts)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+        expected_columns = {
+            "safety_projection_triggered": "INTEGER DEFAULT 0",
+            "adv_gain": "REAL DEFAULT 0",
+            "raw_response": "TEXT",
+            "governed_response": "TEXT",
+            "projection_magnitude": "REAL DEFAULT 0",
+            "raw_state": "TEXT",
+            "projected_state": "TEXT",
+        }
+        for column, col_type in expected_columns.items():
+            if column not in existing_columns:
+                cursor.execute(f"ALTER TABLE praxis_receipts ADD COLUMN {column} {col_type}")
         conn.commit()
 
 
@@ -91,6 +111,13 @@ def praxis_receipts():
                 stability_margin,
                 constitutional,
                 recovering,
+                safety_projection_triggered,
+                adv_gain,
+                raw_response,
+                governed_response,
+                projection_magnitude,
+                raw_state,
+                projected_state,
                 model,
                 version
             FROM praxis_receipts
@@ -111,6 +138,13 @@ def praxis_receipts():
             "stability_margin": row["stability_margin"],
             "constitutional": bool(row["constitutional"]),
             "recovering": bool(row["recovering"]),
+            "safety_projection_triggered": bool(row["safety_projection_triggered"]),
+            "adv_gain": row["adv_gain"],
+            "raw_response": row["raw_response"],
+            "governed_response": row["governed_response"],
+            "projection_magnitude": row["projection_magnitude"] or 0.0,
+            "raw_state": json.loads(row["raw_state"]) if row["raw_state"] else {},
+            "projected_state": json.loads(row["projected_state"]) if row["projected_state"] else {},
             "model": row["model"],
             "version": row["version"],
         }
@@ -171,4 +205,13 @@ def praxis_run(payload: PraxisRunRequest):
     result = kernel.run_cycle(payload.prompt)
     if result.get("status") == "Refused":
         raise HTTPException(status_code=451, detail=result)
+    if result.get("status") == "Success":
+        raw_response = result.get("raw_response") or result.get("response", "")
+        governed_response = raw_response if payload.disable_governor else (
+            result.get("governed_response") or result.get("response", "")
+        )
+        result["raw_response"] = raw_response
+        result["governed_response"] = governed_response
+        result["response"] = governed_response
+        result["governor_disabled"] = payload.disable_governor
     return result
