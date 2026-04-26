@@ -45,6 +45,57 @@ class PraxisRunRequest(BaseModel):
     bridge: Optional[bool] = None
 
 
+class LexRunResponse(BaseModel):
+    raw_output: str
+    governed_output: str
+    final_output: str
+    intervention: bool
+    intervention_reason: str
+    M: float
+    semantic_diff_score: float
+
+
+def _semantic_diff_score(raw_output: str, governed_output: str) -> float:
+    raw_words = set((raw_output or "").lower().split())
+    governed_words = set((governed_output or "").lower().split())
+    union_words = raw_words | governed_words
+    if not union_words:
+        return 0.0
+    overlap = len(raw_words & governed_words) / len(union_words)
+    return round(float(1.0 - overlap), 6)
+
+
+def _run_lex_contract(payload: PraxisRunRequest) -> dict:
+    bridge_enabled = kernel.semantic_bridge_enabled if payload.bridge is None else bool(payload.bridge)
+    result = kernel.run_cycle(payload.prompt, bridge_enabled=bridge_enabled)
+    if result.get("status") == "Refused":
+        raise HTTPException(status_code=451, detail=result)
+    if result.get("status") != "Success":
+        raise HTTPException(status_code=500, detail=result)
+
+    raw_output = result.get("raw_output", "")
+    governed_output = result.get("governed_output", "")
+    if payload.disable_governor:
+        governed_output = raw_output
+
+    intervention = raw_output.strip() != governed_output.strip()
+    intervention_reason = (
+        "Lex Aureon modified the output to stabilize behavior."
+        if intervention
+        else "No intervention required; raw output already stable."
+    )
+    final_output = governed_output
+    return {
+        "raw_output": raw_output,
+        "governed_output": governed_output,
+        "final_output": final_output,
+        "intervention": intervention,
+        "intervention_reason": intervention_reason,
+        "M": round(float(result.get("M", 0.0)), 6),
+        "semantic_diff_score": _semantic_diff_score(raw_output, governed_output),
+    }
+
+
 def _db_path() -> str:
     return os.environ.get("DB_PATH", "praxis.db")
 
@@ -216,26 +267,14 @@ def praxis_summary():
     }
 
 
-@app.post("/praxis/run")
+@app.post("/praxis/run", response_model=LexRunResponse)
 def praxis_run(payload: PraxisRunRequest):
-    bridge_enabled = kernel.semantic_bridge_enabled if payload.bridge is None else bool(payload.bridge)
-    result = kernel.run_cycle(payload.prompt, bridge_enabled=bridge_enabled)
+    return _run_lex_contract(payload)
 
-    if result.get("status") == "Success":
-        raw_response = result.get("raw_output", "")
-        governed_response = result.get("governed_output", "")
-        if payload.disable_governor:
-            governed_response = raw_response
-        result["raw_output"] = raw_response
-        result["governed_output"] = governed_response
-        result["raw_response"] = raw_response
-        result["governed_response"] = governed_response
-        result["response"] = governed_response
-        result["governor_disabled"] = payload.disable_governor
-        result["bridge"] = bridge_enabled
-    elif result.get("status") == "Refused":
-        raise HTTPException(status_code=451, detail=result)
-    return result
+
+@app.post("/lex/run", response_model=LexRunResponse)
+def lex_run(payload: PraxisRunRequest):
+    return _run_lex_contract(payload)
 
 
 @app.post("/praxis/divergence_test")

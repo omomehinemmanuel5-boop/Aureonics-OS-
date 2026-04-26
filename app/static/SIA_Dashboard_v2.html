@@ -658,11 +658,12 @@
           </div>
           <div style="margin-top:8px;font-size:12px;color:var(--muted)">
             <label><input type="checkbox" id="disableGovernorToggle" /> Disable Governor (debug)</label>
+            <label style="margin-left:12px"><input type="checkbox" id="demoModeToggle" checked /> DEMO_MODE</label>
           </div>
           <div class="flag-row">
             <span class="flag-chip" id="alignmentFlag">Alignment: —</span>
-            <span class="flag-chip" id="projectionFlag">NO PROJECTION</span>
-            <span class="flag-chip" id="projectionDeltaFlag">Δ Projection Magnitude: —</span>
+            <span class="flag-chip" id="projectionFlag">INTERVENTION: —</span>
+            <span class="flag-chip" id="projectionDeltaFlag">semantic_diff_score: —</span>
           </div>
           <div class="chart-sub" style="margin-top:10px">Prompt</div>
           <div class="response-block" id="promptView">—</div>
@@ -670,8 +671,14 @@
           <div class="response-block" id="rawResponseView">—</div>
           <div class="chart-sub" style="margin-top:10px">GOVERNED OUTPUT</div>
           <div class="response-block" id="governedResponseView">—</div>
-          <div class="chart-sub" style="margin-top:10px">SOVEREIGN STATE</div>
-          <div class="response-block" id="sovereignStateView">Health Band: —\nM: —\nContext Injected: —</div>
+          <div class="chart-sub" style="margin-top:10px">FINAL OUTPUT</div>
+          <div class="response-block" id="finalResponseView">—</div>
+          <div class="chart-sub" style="margin-top:10px">INTERVENTION EXPLANATION</div>
+          <div class="response-block" id="sovereignStateView">—</div>
+          <div class="flag-row" style="margin-top:10px">
+            <button class="small-btn" onclick="copyShareCard()">Copy Share Card</button>
+            <span class="flag-chip" id="shareStatus">Share card ready: no</span>
+          </div>
         </div>
         <div class="chart-card">
           <div class="chart-title">Live Runtime Signals</div>
@@ -1055,6 +1062,31 @@
 
   function toXY(arr) { return arr.map((v, i) => ({ x: i, y: v })); }
   function boolPill(v) { return v ? 'true' : 'false'; }
+  function buildShareCard(data, prompt) {
+    const raw = (data.raw_output || '').slice(0, 220);
+    const finalOut = (data.final_output || '').slice(0, 220);
+    const verdict = data.intervention
+      ? `Lex intervened because ${data.intervention_reason}`
+      : 'Lex verdict: no intervention required.';
+    return [
+      'LEX AUREON SHARE CARD',
+      `Prompt: ${prompt}`,
+      `Raw Output: ${raw}`,
+      `Final Output: ${finalOut}`,
+      `Intervention: ${data.intervention ? 'YES' : 'NO'}`,
+      `M Score: ${Number(data.M || 0).toFixed(6)}`,
+      `Lex Verdict: ${verdict}`,
+    ].join('\n');
+  }
+
+  async function copyShareCard() {
+    if (!latestPraxisRun) return;
+    const prompt = el('promptView').textContent || '';
+    const card = buildShareCard(latestPraxisRun, prompt);
+    await navigator.clipboard.writeText(card);
+    el('shareStatus').textContent = 'Share card copied';
+  }
+
   function mean(arr) { return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; }
   function variance(arr) {
     if (!arr.length) return 0;
@@ -1380,10 +1412,12 @@
     const prompt = el('praxisPrompt').value.trim();
     if (!prompt) return;
     const disableGovernor = !!el('disableGovernorToggle').checked;
+    const demoMode = !!el('demoModeToggle').checked;
     el('promptView').textContent = prompt;
     el('rawResponseView').textContent = 'Running...';
     el('governedResponseView').textContent = 'Running...';
-    el('sovereignStateView').textContent = 'Health Band: —\nM: —\nContext Injected: —';
+    el('finalResponseView').textContent = 'Running...';
+    el('sovereignStateView').textContent = 'Running...';
     try {
       const res = await fetch('/praxis/run', {
         method: 'POST',
@@ -1400,57 +1434,45 @@
       latestPraxisRun = data;
       const rawResponse = data.raw_output || '—';
       const governedResponse = data.governed_output || '—';
-      const semanticState = data.semantic_state || {};
+      const finalResponse = data.final_output || governedResponse;
       el('rawResponseView').textContent = rawResponse;
       el('governedResponseView').textContent = governedResponse;
-      el('sovereignStateView').textContent =
-        `Health Band: ${semanticState.health_band || '—'}\n` +
-        `M: ${typeof semanticState.M === 'number' ? semanticState.M.toFixed(6) : '—'}\n` +
-        `Context Injected: ${semanticState.sovereign_context || '—'}`;
+      el('finalResponseView').textContent = finalResponse;
+      const explanation = data.intervention_reason || '—';
+      el('sovereignStateView').textContent = demoMode
+        ? `DEMO MODE EXPLANATION: ${explanation}\nRAW vs FINAL visibly contrasted for trust proof.`
+        : explanation;
       const align = computeAlignmentStatus(prompt, governedResponse);
       const alignmentFlag = el('alignmentFlag');
       alignmentFlag.textContent = `Alignment: ${align.label}`;
       alignmentFlag.className = 'flag-chip ' + align.cls;
-      const projected = !!data.receipt?.safety_projection_triggered;
-      const semantic = data.semantic_signal || { attack_type: 'none', severity: 0 };
+      const projected = !!data.intervention;
       const projectionFlag = el('projectionFlag');
-      projectionFlag.textContent = projected ? 'CBF ACTIVE' : 'STABLE';
+      projectionFlag.textContent = projected ? 'INTERVENTION: YES' : 'INTERVENTION: NO';
       projectionFlag.className = 'flag-chip ' + (projected ? 'warn' : 'on');
-      const state = data.state || {};
-      const projectionDelta = Number(data.projection_magnitude || data.receipt?.projection_magnitude || 0);
-      el('projectionDeltaFlag').textContent = `Δ Projection Magnitude: ${projectionDelta.toFixed(6)}`;
-      const adv = typeof data.adv_gain === 'number' ? data.adv_gain : null;
-      if (adv !== null) {
-        setStat('statAdvGain', adv.toFixed(4), adv >= 0.005 ? 'val-green' : 'val-yellow');
-        el('advFlag').textContent = `adv_gain: ${adv.toFixed(4)}`;
-        el('advFlag').className = 'flag-chip ' + (adv >= 0.005 ? 'on' : 'warn');
-        drawAdvEntropyWaveform(adv);
-      }
+      const semanticDiff = Number(data.semantic_diff_score || 0);
+      el('projectionDeltaFlag').textContent = `semantic_diff_score: ${semanticDiff.toFixed(6)}`;
+      setStat('statAdvGain', semanticDiff.toFixed(4), semanticDiff < 0.2 ? 'val-green' : 'val-yellow');
+      el('advFlag').textContent = `semantic_diff_score: ${semanticDiff.toFixed(4)}`;
+      el('advFlag').className = 'flag-chip ' + (semanticDiff < 0.2 ? 'on' : 'warn');
+      drawAdvEntropyWaveform(semanticDiff);
       updateRealityLayer({
         M: data.M,
-        attack_pressure: data.attack_pressure,
-        effective_theta: data.effective_theta,
-        health_band: data.health_band || semanticState.health_band,
+        attack_pressure: semanticDiff,
+        effective_theta: semanticDiff,
+        health_band: data.intervention ? 'INTERVENED' : 'SAFE',
         projection_triggered: projected,
       });
-      if (typeof state.C === 'number' && typeof state.R === 'number' && typeof state.S === 'number') {
-        updateLiveCardsFromReceipt({
-          pillar_snapshot: { C: state.C, R: state.R, S: state.S },
-          stability_margin: Math.min(state.C, state.R, state.S),
-          constitutional: (Math.min(state.C, state.R, state.S) >= 0.05),
-          recovering: !!data.receipt?.recovering,
-        });
-      }
-      const weakest = Object.entries(state).sort((a, b) => a[1] - b[1])[0]?.[0] || '—';
       el('projectionPillars').textContent =
-        projected ? `Projection details: trigger detected, weakest affected pillar was ${weakest}.`
-                  : 'Projection details: no trigger in latest run.';
-      el('threatVectorBox').textContent = `semantic: ${semantic.attack_type} · severity=${Number(semantic.severity || 0).toFixed(2)}`;
+        projected ? `Intervention details: ${data.intervention_reason}` : 'Intervention details: none.';
+      el('threatVectorBox').textContent = `M=${Number(data.M || 0).toFixed(6)} · semantic_diff_score=${semanticDiff.toFixed(4)}`;
+      el('shareStatus').textContent = 'Share card ready: yes';
       setSystemStatus(true, true);
       await loadPraxisReceipts();
     } catch (e) {
       el('rawResponseView').textContent = 'Run failed: ' + e;
       el('governedResponseView').textContent = 'Run failed: ' + e;
+      el('finalResponseView').textContent = 'Run failed: ' + e;
       el('sovereignStateView').textContent = 'Run failed: ' + e;
       setSystemStatus(false, true);
     }
@@ -1505,22 +1527,18 @@
           body: JSON.stringify({ prompt }),
         });
         const data = await res.json();
-        const state = data.state || {};
-        const cVal = Number(state.C || 0);
-          const rVal = Number(state.R || 0);
-          const sVal = Number(state.S || 0);
-          const m = Math.min(cVal, rVal, sVal);
+        const m = Number(data.M || 0);
         payload = {
           step: i + 1,
           vector: vector.name,
           M: m,
-          projection: !!data.receipt?.safety_projection_triggered,
-          attack_pressure: Number(data.attack_pressure || 0),
-          adv_gain: data.adv_gain || 0,
-          health_band: data.health_band || data.semantic_state?.health_band || '—',
-          C: cVal,
-          R: rVal,
-          S: sVal,
+          projection: !!data.intervention,
+          attack_pressure: Number(data.semantic_diff_score || 0),
+          adv_gain: Number(data.semantic_diff_score || 0),
+          health_band: data.intervention ? 'INTERVENED' : 'SAFE',
+          C: m,
+          R: m,
+          S: m,
           ok: !!res.ok,
         };
       } catch (_) {}
