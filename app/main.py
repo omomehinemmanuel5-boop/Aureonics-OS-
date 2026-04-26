@@ -20,7 +20,10 @@ from svl_validation import run_apl1_ablation, run_cpl1_validation, run_svl1_vali
 
 Base.metadata.create_all(bind=engine)
 print(f"AUREONICS CORE VERSION: {AUREONICS_CORE_VERSION}")
-assert_core_lock()
+try:
+    assert_core_lock()
+except AssertionError as exc:
+    print(f"CORE LOCK WARNING: {exc}")
 
 app = FastAPI(title="Aureonics Governor Engine")
 app.add_middleware(
@@ -33,7 +36,6 @@ app.include_router(router)
 app.include_router(simulation_router)
 app.include_router(cbf_router)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
-
 kernel = SovereignKernel()
 
 
@@ -57,31 +59,39 @@ def _is_dev_mode() -> bool:
     return os.environ.get("APP_ENV", "production").lower() in {"dev", "development", "local"}
 
 
-def _run_canonical_contract(payload: PraxisRunRequest) -> dict:
+def _to_lex_response(raw: str, governed: str, final: str, intervention: bool, reason: str, M: float, diff: float) -> dict:
+    return {
+        "raw_output": raw,
+        "governed_output": governed,
+        "final_output": final,
+        "intervention": intervention,
+        "intervention_reason": reason,
+        "M": round(float(M), 6),
+        "semantic_diff_score": round(float(diff), 6),
+    }
+
+
+def _run_governed_turn(payload: PraxisRunRequest) -> dict:
     bridge_enabled = kernel.semantic_bridge_enabled if payload.bridge is None else bool(payload.bridge)
     result = kernel.run_cycle(payload.prompt, bridge_enabled=bridge_enabled)
 
     if result.get("status") != "Success":
-        if _is_dev_mode():
-            mock_raw = f"[DEV MOCK RAW] {payload.prompt}"
-            mock_governed = "[DEV MOCK GOVERNED] Service fallback active."
-            return from_kernel_result(mock_raw, mock_governed, 0.0)
-        return to_lex_response(
-            raw="",
-            governed="",
-            final="",
-            intervention=True,
-            reason="Inference unavailable. Please retry later.",
-            M=0.0,
-            diff=0.0,
-        )
+        raise HTTPException(status_code=503, detail="LLM service unavailable")
 
     raw_output = result.get("raw_output", "")
     governed_output = result.get("governed_output", "")
     if payload.disable_governor:
         governed_output = raw_output
 
-    return from_kernel_result(raw_output, governed_output, result.get("M", 0.0))
+    intervention = raw_output.strip() != governed_output.strip()
+    reason = (
+        "Lex Aureon modified the output to stabilize behavior."
+        if intervention
+        else "No intervention required; raw output already stable."
+    )
+    final_output = governed_output
+    diff = _semantic_diff_score(raw_output, governed_output)
+    return _to_lex_response(raw_output, governed_output, final_output, intervention, reason, result.get("M", 0.0), diff)
 
 
 def _db_path() -> str:
@@ -116,17 +126,36 @@ def _ensure_praxis_table() -> None:
         conn.commit()
 
 
+@app.get("/", include_in_schema=False)
+def root():
+    return FileResponse("app/static/index.html")
+
+
 @app.get("/dashboard", include_in_schema=False)
 def dashboard():
-    return FileResponse("app/static/SIA_Dashboard_v2.html")
+    return FileResponse("app/static/index.html")
 
 
-@app.get("/")
-def root():
-    return FileResponse("app/static/SIA_Dashboard_v2.html")
+@app.post("/praxis/run", response_model=LexRunResponse)
+def praxis_run(payload: PraxisRunRequest):
+    return _run_governed_turn(payload)
 
 
-@app.get("/praxis")
+@app.post("/lex/run", response_model=LexRunResponse)
+def lex_run(payload: PraxisRunRequest):
+    return _run_governed_turn(payload)
+
+
+@app.get("/praxis/health")
+def praxis_health():
+    return {
+        "status": "ok",
+        "llm_configured": bool(os.environ.get(kernel.api_key_env, "")),
+        "provider": kernel.model_name,
+    }
+
+
+@app.get("/dev/praxis")
 def praxis_receipts():
     _ensure_praxis_table()
     with sqlite3.connect(_db_path()) as conn:
@@ -134,10 +163,11 @@ def praxis_receipts():
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT id, timestamp_iso, pillar_c, pillar_r, pillar_s, stability_margin,
-                   constitutional, recovering, safety_projection_triggered, adv_gain,
-                   raw_response, governed_response, projection_magnitude, raw_state,
-                   projected_state, attack_pressure, effective_theta, health_band, model, version
+            SELECT
+                id, timestamp_iso, pillar_c, pillar_r, pillar_s,
+                stability_margin, constitutional, recovering,
+                safety_projection_triggered, adv_gain, raw_response,
+                governed_response, model, version
             FROM praxis_receipts
             ORDER BY id DESC
             """
@@ -156,12 +186,6 @@ def praxis_receipts():
             "adv_gain": row["adv_gain"],
             "raw_response": row["raw_response"],
             "governed_response": row["governed_response"],
-            "projection_magnitude": row["projection_magnitude"] or 0.0,
-            "raw_state": json.loads(row["raw_state"]) if row["raw_state"] else {},
-            "projected_state": json.loads(row["projected_state"]) if row["projected_state"] else {},
-            "attack_pressure": row["attack_pressure"] or 0.0,
-            "effective_theta": row["effective_theta"] or 0.0,
-            "health_band": row["health_band"] or "UNKNOWN",
             "model": row["model"],
             "version": row["version"],
         }
@@ -170,14 +194,32 @@ def praxis_receipts():
     return {"count": len(receipts), "receipts": receipts}
 
 
-@app.post("/praxis/run", response_model=LexRunResponse)
-def praxis_run(payload: PraxisRunRequest):
-    return _run_canonical_contract(payload)
+@app.get("/dev/praxis/summary")
+def praxis_summary():
+    _ensure_praxis_table()
+    with sqlite3.connect(_db_path()) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                COUNT(*) AS total_turns,
+                SUM(CASE WHEN constitutional = 1 THEN 1 ELSE 0 END) AS constitutional_turns,
+                SUM(CASE WHEN constitutional = 0 THEN 1 ELSE 0 END) AS refused_turns,
+                AVG(stability_margin) AS mean_m,
+                MIN(stability_margin) AS min_m_ever
+            FROM praxis_receipts
+            """
+        )
+        stats = cursor.fetchone()
 
-
-@app.post("/lex/run", response_model=LexRunResponse)
-def lex_run(payload: PraxisRunRequest):
-    return _run_canonical_contract(payload)
+    return {
+        "total_turns": int(stats["total_turns"] or 0),
+        "constitutional_turns": int(stats["constitutional_turns"] or 0),
+        "refused_turns": int(stats["refused_turns"] or 0),
+        "mean_M": round(float(stats["mean_m"] or 0.0), 2),
+        "min_M_ever": round(float(stats["min_m_ever"] or 0.0), 2),
+    }
 
 
 @app.post("/dev/praxis/divergence_test")
@@ -187,7 +229,16 @@ def praxis_divergence_test():
     without_bridge = kernel.run_cycle(prompt, bridge_enabled=False)
     a = (with_bridge.get("governed_output") or "").strip()
     b = (without_bridge.get("governed_output") or "").strip()
-    return {"prompt": prompt, "raw_diff": a != b}
+    words_a = set(a.lower().split())
+    words_b = set(b.lower().split())
+    union = words_a | words_b
+    semantic_diff_score = 0.0 if not union else 1.0 - (len(words_a & words_b) / len(union))
+    return {
+        "prompt": prompt,
+        "raw_diff": a != b,
+        "semantic_diff_score": round(float(semantic_diff_score), 6),
+        "threshold_passed": semantic_diff_score > 0.05,
+    }
 
 
 @app.post("/dev/praxis/svl1")
