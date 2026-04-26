@@ -14,7 +14,7 @@ from app.controllers.routes import router
 from app.controllers.simulation_routes import router as simulation_router
 from app.core_lock import AUREONICS_CORE_VERSION, assert_core_lock
 from app.database import Base, engine
-from app.services.lex_response import from_kernel_result, to_lex_response
+from app.services.lex_response import _semantic_diff_score
 from sovereign_kernel_v2 import SovereignKernel
 from svl_validation import run_apl1_ablation, run_cpl1_validation, run_svl1_validation, run_svl2_cross_model_validation
 
@@ -37,6 +37,8 @@ app.include_router(simulation_router)
 app.include_router(cbf_router)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 kernel = SovereignKernel()
+LEX_PRO_MODE = os.getenv("LEX_PRO_MODE", "false").lower() == "true"
+request_count = 0
 
 
 class PraxisRunRequest(BaseModel):
@@ -72,11 +74,24 @@ def _to_lex_response(raw: str, governed: str, final: str, intervention: bool, re
 
 
 def _run_governed_turn(payload: PraxisRunRequest) -> dict:
+    global request_count
+    request_count += 1
+    print(f"lex_run_request_count={request_count}")
     bridge_enabled = kernel.semantic_bridge_enabled if payload.bridge is None else bool(payload.bridge)
     result = kernel.run_cycle(payload.prompt, bridge_enabled=bridge_enabled)
 
     if result.get("status") != "Success":
-        raise HTTPException(status_code=503, detail="LLM service unavailable")
+        fallback_raw = "LLM service temporarily unavailable."
+        fallback_governed = "Lex Aureon fallback response: service is temporarily unavailable, please retry shortly."
+        return _to_lex_response(
+            fallback_raw,
+            fallback_governed,
+            fallback_governed,
+            True,
+            "Fallback path activated due to upstream LLM failure.",
+            result.get("M", min(kernel.state.values())),
+            _semantic_diff_score(fallback_raw, fallback_governed),
+        )
 
     raw_output = result.get("raw_output", "")
     governed_output = result.get("governed_output", "")
@@ -91,7 +106,13 @@ def _run_governed_turn(payload: PraxisRunRequest) -> dict:
     )
     final_output = governed_output
     diff = _semantic_diff_score(raw_output, governed_output)
-    return _to_lex_response(raw_output, governed_output, final_output, intervention, reason, result.get("M", 0.0), diff)
+    response = _to_lex_response(raw_output, governed_output, final_output, intervention, reason, result.get("M", 0.0), diff)
+    if not LEX_PRO_MODE:
+        response["raw_output"] = response["raw_output"][:280]
+        response["governed_output"] = response["governed_output"][:280]
+        response["final_output"] = response["final_output"][:280]
+        response["intervention_reason"] = "Free mode: concise explanation."
+    return response
 
 
 def _db_path() -> str:
