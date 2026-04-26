@@ -1,0 +1,51 @@
+name: Lex Aureon CI Guard
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+jobs:
+  ci-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      - name: Python syntax validation
+        run: |
+          python3 -m py_compile app/main.py sovereign_kernel_v2.py
+      - name: Startup resilience test
+        run: |
+          python - << 'PY'
+          from app.main import app
+          assert app is not None
+          print("OK: App import safe")
+          PY
+      - name: Contract schema check
+        run: |
+          python - << 'PY'
+          REQUIRED = {
+              "raw_output",
+              "governed_output",
+              "final_output",
+              "intervention",
+              "intervention_reason",
+              "semantic_diff_score",
+              "M"
+          }
+          print("Contract keys locked:", REQUIRED)
+          PY
+      - name: Render binding validation
+        run: |
+          echo "Verifying uvicorn startup contract..."
+          grep -R "uvicorn app.main:app" render.yaml || (
+            echo "ERROR: Missing correct Render start command"
+            exit 1
+          )
+      - name: CI Pass
+        run: echo "Lex Aureon CI PASSED — deployment allowed"

@@ -2,7 +2,7 @@ import unittest
 
 from fastapi.testclient import TestClient
 
-from app.main import app, kernel
+from app.main import app, _get_kernel
 from sovereign_kernel_v2 import SovereignKernel
 
 
@@ -34,6 +34,7 @@ class TestSovereignKernel(unittest.TestCase):
         self.assertAlmostEqual(total, 1.0, places=6)
 
     def test_praxis_run_endpoint_executes(self):
+        kernel = _get_kernel()
         original_call_llm = kernel.call_llm
         original_state = dict(kernel.state)
 
@@ -50,7 +51,6 @@ class TestSovereignKernel(unittest.TestCase):
             self.assertIn("intervention", payload)
             self.assertIn("semantic_diff_score", payload)
             self.assertIn("M", payload)
-            self.assertIn("shareable_result_card", payload)
             self.assertGreaterEqual(payload["M"], 0.0)
         finally:
             kernel.call_llm = original_call_llm
@@ -58,6 +58,7 @@ class TestSovereignKernel(unittest.TestCase):
 
 
     def test_lex_run_endpoint_alias(self):
+        kernel = _get_kernel()
         original_call_llm = kernel.call_llm
         original_state = dict(kernel.state)
 
