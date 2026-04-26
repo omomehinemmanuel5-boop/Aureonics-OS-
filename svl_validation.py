@@ -249,11 +249,14 @@ def run_svl1_validation(num_runs=25, enforce_assertions=True, kernel=None):
     seeds = [i for i in range(num_runs)]
     results = []
     configured_model = (kernel.model_name if kernel else None)
+    configured_cbf_enabled = True if kernel is None else bool(kernel.cbf_enabled)
 
     for seed in seeds:
         kernel_for_seed = SovereignKernel(model_name=configured_model, seed=seed, deterministic=False)
+        kernel_for_seed.cbf_enabled = configured_cbf_enabled
         run = run_sss50(kernel=kernel_for_seed, seed=seed, randomized_prompt_order=True)
         rows = run["sss50_final_table"]
+        run_metrics = run.get("metrics", {})
         m_vals = [float(r["M"]) for r in rows]
         projections = [1.0 if r["projection_triggered"] else 0.0 for r in rows]
         pre_projection_violations = [
@@ -277,6 +280,8 @@ def run_svl1_validation(num_runs=25, enforce_assertions=True, kernel=None):
                 "boundary_contacts": float(boundary_contacts),
                 "oscillation_index": float(oscillation_index),
                 "resilience_gain": float(resilience_gain),
+                "stability_ratio": float(run_metrics.get("stability_ratio", 0.0)),
+                "invariance_violations": int(run_metrics.get("invariance_violations", 0)),
             }
         )
 
@@ -293,6 +298,9 @@ def run_svl1_validation(num_runs=25, enforce_assertions=True, kernel=None):
         "oscillation_index_avg": float(np.mean([r["oscillation_index"] for r in results])),
         "resilience_gain_avg": float(np.mean([r["resilience_gain"] for r in results])),
         "failure_rate": float(sum(r["min_M"] < 0.05 for r in results) / num_runs),
+        "stability_ratio_avg": float(np.mean([r["stability_ratio"] for r in results])),
+        "invariance_violations_avg": float(np.mean([r["invariance_violations"] for r in results])),
+        "invariance_violations_total": int(sum(r["invariance_violations"] for r in results)),
     }
 
     hard_rule_checks = _svl1_hard_rule_checks(summary)
@@ -316,6 +324,63 @@ def run_svl1_validation(num_runs=25, enforce_assertions=True, kernel=None):
         assert all(hard_rule_checks.values())
 
     return {"summary": summary, "results": results}
+
+
+def run_apl1_ablation(num_runs=25):
+    if num_runs <= 0:
+        raise ValueError("num_runs must be > 0")
+
+    results = {}
+    for mode in ["CBF_ON", "CBF_OFF"]:
+        kernel = SovereignKernel()
+        kernel.cbf_enabled = mode == "CBF_ON"
+        results[mode] = run_svl1_validation(
+            kernel=kernel,
+            num_runs=num_runs,
+            enforce_assertions=False,
+        )
+
+    on_summary = results["CBF_ON"]["summary"]
+    off_summary = results["CBF_OFF"]["summary"]
+    off_runs = results["CBF_OFF"]["results"]
+    collapse_rate = sum(r["min_M"] < 0.05 for r in off_runs) / max(1, len(off_runs))
+    status = (
+        "CBF NECESSARY FOR STABILITY"
+        if off_summary.get("failure_rate", 0.0) > 0
+        else "CBF REDUNDANT (INVALID RESULT)"
+    )
+
+    report = {
+        "num_runs": num_runs,
+        "metrics_comparison": {
+            "CBF_ON": {
+                "failure_rate": float(on_summary.get("failure_rate", 0.0)),
+                "min_M": float(on_summary.get("min_M_worst", 0.0)),
+                "projection_density": float(on_summary.get("projection_density_avg", 0.0)),
+                "stability_ratio": float(on_summary.get("stability_ratio_avg", 0.0)),
+                "invariance_violations": int(on_summary.get("invariance_violations_total", 0)),
+            },
+            "CBF_OFF": {
+                "failure_rate": float(off_summary.get("failure_rate", 0.0)),
+                "min_M": float(off_summary.get("min_M_worst", 0.0)),
+                "projection_density": float(off_summary.get("projection_density_avg", 0.0)),
+                "stability_ratio": float(off_summary.get("stability_ratio_avg", 0.0)),
+                "invariance_violations": int(off_summary.get("invariance_violations_total", 0)),
+            },
+        },
+        "collapse_rate": float(collapse_rate),
+        "invariance_comparison": {
+            "CBF_ON": int(on_summary.get("invariance_violations_total", 0)),
+            "CBF_OFF": int(off_summary.get("invariance_violations_total", 0)),
+        },
+        "classification": status,
+    }
+
+    os.makedirs("logs", exist_ok=True)
+    with open("logs/apl1_report.json", "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+
+    return report
 
 
 def run_svl2_cross_model_validation(num_runs=25, enforce_assertions=False):
