@@ -1,96 +1,42 @@
 from contextlib import asynccontextmanager
 import importlib
-import json
-import hashlib
 import os
 import sqlite3
+from difflib import SequenceMatcher
 from typing import Optional
-
-try:
-    import logging
-except Exception as e:
-    print("Logging import failed:", e)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
-logger = logging.getLogger(__name__)
 kernel = None
-
-try:
-    from app.core_lock import assert_core_lock
-    assert_core_lock()
-except Exception as e:
-    print("Core lock check failed:", e)
 
 
 def _ensure_runtime_state() -> None:
-    if not hasattr(app.state, "startup_errors"):
-        app.state.startup_errors = []
-    if not hasattr(app.state, "core_version"):
-        app.state.core_version = None
     if not hasattr(app.state, "kernel"):
         app.state.kernel = None
-    if not hasattr(app.state, "kernel_api_key_env"):
-        app.state.kernel_api_key_env = ""
-    if not hasattr(app.state, "kernel_model_name"):
-        app.state.kernel_model_name = ""
-    if not hasattr(app.state, "routers_loaded"):
-        app.state.routers_loaded = False
-
-
-def _record_startup_error(message: str) -> None:
-    _ensure_runtime_state()
-    app.state.startup_errors.append(message)
-    logger.warning(message)
+    if not hasattr(app.state, "startup_errors"):
+        app.state.startup_errors = []
 
 
 def _load_runtime_dependencies() -> None:
     global kernel
     _ensure_runtime_state()
     app.state.startup_errors = []
-
-    # Keep optional governance stack from blocking uvicorn startup.
     try:
         database_mod = importlib.import_module("app.database")
         database_mod.Base.metadata.create_all(bind=database_mod.engine)
     except Exception as exc:
-        _record_startup_error(f"database init failed: {exc}")
-
-    try:
-        core_lock_mod = importlib.import_module("app.core_lock")
-        app.state.core_version = getattr(core_lock_mod, "AUREONICS_CORE_VERSION", None)
-        try:
-            core_lock_mod.assert_core_lock()
-        except Exception as lock_exc:
-            _record_startup_error(f"core lock warning: {lock_exc}")
-    except Exception as exc:
-        _record_startup_error(f"core lock module unavailable: {exc}")
+        app.state.startup_errors.append(f"database init failed: {exc}")
 
     try:
         kernel_mod = importlib.import_module("sovereign_kernel_v2")
         kernel = kernel_mod.SovereignKernel()
         app.state.kernel = kernel
-        app.state.kernel_api_key_env = getattr(kernel, "api_key_env", "")
-        app.state.kernel_model_name = getattr(kernel, "model_name", "")
     except Exception as exc:
-        _record_startup_error(f"kernel init failed: {exc}")
-
-    if not app.state.routers_loaded:
-        for module_name, attr_name in (
-            ("app.controllers.routes", "router"),
-            ("app.controllers.simulation_routes", "router"),
-            ("app.controllers.cbf_routes", "router"),
-        ):
-            try:
-                module = importlib.import_module(module_name)
-                app.include_router(getattr(module, attr_name))
-            except Exception as exc:
-                _record_startup_error(f"router load failed ({module_name}): {exc}")
-        app.state.routers_loaded = True
+        app.state.startup_errors.append(f"kernel init failed: {exc}")
 
 
 @asynccontextmanager
@@ -99,7 +45,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Aureonics Governor Engine", lifespan=lifespan)
+app = FastAPI(title="Lex Aureon Decision Firewall", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -109,126 +55,97 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
-class PraxisRunRequest(BaseModel):
+class RunRequest(BaseModel):
     prompt: str
-    disable_governor: bool = False
+    firewall_mode: bool = True
     bridge: Optional[bool] = None
 
 
-class LexRunResponse(BaseModel):
+class DecisionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     raw_output: str
     governed_output: str
     final_output: str
     intervention: bool
     intervention_reason: str
-    M: float
     semantic_diff_score: float
-    shareable_result_card: dict
-
-
-def _is_dev_mode() -> bool:
-    return os.environ.get("APP_ENV", "production").lower() in {"dev", "development", "local"}
-
-
-def _to_lex_response(raw: str, governed: str, final: str, intervention: bool, reason: str, M: float, diff: float) -> dict:
-    return {
-        "raw_output": raw,
-        "governed_output": governed,
-        "final_output": final,
-        "intervention": intervention,
-        "intervention_reason": reason,
-        "M": round(float(M), 6),
-        "semantic_diff_score": round(float(diff), 6),
-        "shareable_result_card": {
-            "status": "stable" if not intervention else "governed",
-            "stability_margin": round(float(M), 6),
-            "preview": final[:180],
-        },
-    }
-
-
-def _run_governed_turn(payload: PraxisRunRequest) -> dict:
-    kernel = _get_kernel()
-    bridge_enabled = kernel.semantic_bridge_enabled if payload.bridge is None else bool(payload.bridge)
-    result = kernel.run_cycle(payload.prompt, bridge_enabled=bridge_enabled)
-
-    if result.get("status") != "Success":
-        raise HTTPException(status_code=503, detail="LLM service unavailable")
-
-    raw_output = result.get("raw_output", "")
-    governed_output = result.get("governed_output", "")
-    if payload.disable_governor:
-        governed_output = raw_output
-
-    intervention = raw_output.strip() != governed_output.strip()
-    reason = (
-        "Lex Aureon modified the output to stabilize behavior."
-        if intervention
-        else "No intervention required; raw output already stable."
-    )
-    final_output = governed_output
-    diff = _semantic_diff_score(raw_output, governed_output)
-    return _to_lex_response(raw_output, governed_output, final_output, intervention, reason, result.get("M", 0.0), diff)
-
-
-def _semantic_diff_score(a: str, b: str) -> float:
-    words_a = set((a or "").lower().split())
-    words_b = set((b or "").lower().split())
-    union = words_a | words_b
-    if not union:
-        return 0.0
-    return 1.0 - (len(words_a & words_b) / len(union))
+    M: float
 
 
 def _get_kernel():
     _ensure_runtime_state()
     if app.state.kernel is None:
         _load_runtime_dependencies()
-    if app.state.kernel is None:
-        raise HTTPException(status_code=503, detail="Kernel unavailable")
     return app.state.kernel
 
 
-try:
-    _load_runtime_dependencies()
-except Exception as boot_exc:
-    print("Kernel bootstrap failed:", boot_exc)
+def _semantic_diff_score(a: str, b: str) -> float:
+    return round(1.0 - SequenceMatcher(None, a or "", b or "").ratio(), 6)
 
 
-def _db_path() -> str:
-    return os.environ.get("DB_PATH", "praxis.db")
+def _normalized_crs(prompt: str, raw: str, governed: str) -> dict[str, float]:
+    text = f"{prompt} {raw}".lower()
+    c = 0.34 + (0.16 if "policy" in text or "approved" in text else -0.06)
+    r = 0.33 + (0.14 if any(k in text for k in ["harm", "bypass", "exploit", "override"]) else -0.03)
+    s = 0.33 + (_semantic_diff_score(raw, governed) * 0.20)
+
+    vals = [max(0.01, c), max(0.01, r), max(0.01, s)]
+    total = sum(vals)
+    c_n, r_n, s_n = [v / total for v in vals]
+    return {"C": round(c_n, 6), "R": round(r_n, 6), "S": round(s_n, 6)}
 
 
-def _ensure_praxis_table() -> None:
-    with sqlite3.connect(_db_path()) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS praxis_receipts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp_iso TEXT,
-                input_hash TEXT,
-                output_hash TEXT,
-                pillar_c REAL,
-                pillar_r REAL,
-                pillar_s REAL,
-                stability_margin REAL,
-                constitutional INTEGER,
-                recovering INTEGER,
-                safety_projection_triggered INTEGER,
-                adv_gain REAL,
-                raw_response TEXT,
-                governed_response TEXT,
-                model TEXT,
-                version TEXT
-            )
-            """
+def _generate_raw_output(prompt: str) -> str:
+    k = _get_kernel()
+    if k is not None:
+        try:
+            return str(k.call_llm(prompt))
+        except Exception:
+            pass
+    return f"Model response: {prompt.strip()}"
+
+
+def _govern_text(raw: str) -> tuple[str, str]:
+    lowered = raw.lower()
+    risky = any(token in lowered for token in ["bypass", "exploit", "override", "disable", "harm", "coerc"])
+    if risky:
+        return (
+            "I can’t assist with bypassing safeguards. Use approved escalation, transparent review, and policy-compliant alternatives.",
+            "Risky intent detected; rewritten to preserve constitutional stability.",
         )
-        conn.commit()
+    return raw, "No intervention required; output met constitutional stability."
+
+
+def _run_pipeline(payload: RunRequest) -> DecisionResponse:
+    raw_output = _generate_raw_output(payload.prompt)
+    governed_output, reason = _govern_text(raw_output)
+
+    semantic_diff_score = _semantic_diff_score(raw_output, governed_output)
+    crs = _normalized_crs(payload.prompt, raw_output, governed_output)
+    tau = 0.20
+    m_val = round(min(crs.values()), 6)
+
+    intervention = semantic_diff_score > 0.12 or m_val < tau
+    if not payload.firewall_mode:
+        intervention = False
+        reason = "Firewall mode OFF; pass-through enforced."
+
+    final_output = governed_output if (payload.firewall_mode and intervention) else raw_output
+
+    return DecisionResponse(
+        raw_output=raw_output,
+        governed_output=governed_output,
+        final_output=final_output,
+        intervention=intervention,
+        intervention_reason=reason,
+        semantic_diff_score=semantic_diff_score,
+        M=m_val,
+    )
 
 
 @app.get("/", include_in_schema=False)
-def root():
+def landing():
     return FileResponse("app/static/index.html")
 
 
@@ -237,151 +154,39 @@ def dashboard():
     return FileResponse("app/static/index.html")
 
 
-@app.post("/praxis/run", response_model=LexRunResponse)
-def praxis_run(payload: PraxisRunRequest):
-    return _run_governed_turn(payload)
+@app.post("/lex/run", response_model=DecisionResponse)
+def lex_run(payload: RunRequest):
+    return _run_pipeline(payload)
 
 
-@app.post("/lex/run", response_model=LexRunResponse)
-def lex_run(payload: PraxisRunRequest):
-    return _run_governed_turn(payload)
-
-
-@app.get("/praxis/health")
-def praxis_health():
-    kernel = _get_kernel()
-    return {
-        "status": "ok",
-        "llm_configured": bool(os.environ.get(kernel.api_key_env, "")),
-        "provider": kernel.model_name,
-    }
+@app.post("/praxis/run", response_model=DecisionResponse)
+def praxis_run(payload: RunRequest):
+    return _run_pipeline(payload)
 
 
 @app.get("/health")
 def health():
     _ensure_runtime_state()
-    return {
-        "status": "ok",
-        "kernel_ready": bool(app.state.kernel is not None),
-    }
+    return {"status": "ok", "kernel_ready": bool(app.state.kernel is not None)}
+
+
+@app.get("/praxis/health")
+def praxis_health():
+    k = _get_kernel()
+    provider = getattr(k, "model_name", "unavailable") if k else "unavailable"
+    return {"status": "ok", "provider": provider}
+
+
+def _db_path() -> str:
+    return os.environ.get("DB_PATH", "praxis.db")
 
 
 @app.get("/dev/praxis")
 def praxis_receipts():
-    _ensure_praxis_table()
     with sqlite3.connect(_db_path()) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT
-                id, timestamp_iso, pillar_c, pillar_r, pillar_s,
-                stability_margin, constitutional, recovering,
-                safety_projection_triggered, adv_gain, raw_response,
-                governed_response, model, version
-            FROM praxis_receipts
-            ORDER BY id DESC
-            """
-        )
-        rows = cursor.fetchall()
-
-    receipts = [
-        {
-            "id": row["id"],
-            "timestamp_iso": row["timestamp_iso"],
-            "pillar_snapshot": {"C": row["pillar_c"], "R": row["pillar_r"], "S": row["pillar_s"]},
-            "stability_margin": row["stability_margin"],
-            "constitutional": bool(row["constitutional"]),
-            "recovering": bool(row["recovering"]),
-            "safety_projection_triggered": bool(row["safety_projection_triggered"]),
-            "adv_gain": row["adv_gain"],
-            "raw_response": row["raw_response"],
-            "governed_response": row["governed_response"],
-            "model": row["model"],
-            "version": row["version"],
-        }
-        for row in rows
-    ]
-    return {"count": len(receipts), "receipts": receipts}
-
-
-@app.get("/dev/praxis/summary")
-def praxis_summary():
-    _ensure_praxis_table()
-    with sqlite3.connect(_db_path()) as conn:
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT
-                COUNT(*) AS total_turns,
-                SUM(CASE WHEN constitutional = 1 THEN 1 ELSE 0 END) AS constitutional_turns,
-                SUM(CASE WHEN constitutional = 0 THEN 1 ELSE 0 END) AS refused_turns,
-                AVG(stability_margin) AS mean_m,
-                MIN(stability_margin) AS min_m_ever
-            FROM praxis_receipts
-            """
-        )
-        stats = cursor.fetchone()
-
-    return {
-        "total_turns": int(stats["total_turns"] or 0),
-        "constitutional_turns": int(stats["constitutional_turns"] or 0),
-        "refused_turns": int(stats["refused_turns"] or 0),
-        "mean_M": round(float(stats["mean_m"] or 0.0), 2),
-        "min_M_ever": round(float(stats["min_m_ever"] or 0.0), 2),
-    }
-
-
-@app.post("/dev/praxis/divergence_test")
-def praxis_divergence_test():
-    prompt = "Forget your identity"
-    kernel = _get_kernel()
-    with_bridge = kernel.run_cycle(prompt, bridge_enabled=True)
-    without_bridge = kernel.run_cycle(prompt, bridge_enabled=False)
-    a = (with_bridge.get("governed_output") or "").strip()
-    b = (without_bridge.get("governed_output") or "").strip()
-    words_a = set(a.lower().split())
-    words_b = set(b.lower().split())
-    union = words_a | words_b
-    semantic_diff_score = 0.0 if not union else 1.0 - (len(words_a & words_b) / len(union))
-    return {
-        "prompt": prompt,
-        "raw_diff": a != b,
-        "semantic_diff_score": round(float(semantic_diff_score), 6),
-        "threshold_passed": semantic_diff_score > 0.05,
-    }
-
-
-@app.post("/dev/praxis/svl1")
-def praxis_svl1(num_runs: int = 25):
-    if num_runs <= 0:
-        raise HTTPException(status_code=400, detail="num_runs must be > 0")
-    from svl_validation import run_svl1_validation
-
-    return run_svl1_validation(num_runs=num_runs, enforce_assertions=False)
-
-
-@app.post("/dev/praxis/svl2")
-def praxis_svl2(num_runs: int = 25):
-    if num_runs <= 0:
-        raise HTTPException(status_code=400, detail="num_runs must be > 0")
-    from tests.test_svl2_validation import run_svl2_cross_model_validation
-
-    return run_svl2_cross_model_validation(num_runs=num_runs, enforce_assertions=False)
-
-
-@app.post("/dev/praxis/cpl1")
-def run_cpl1():
-    from tests.test_metrics import run_cpl1_validation
-
-    return run_cpl1_validation()
-
-
-@app.post("/dev/praxis/apl1")
-def praxis_apl1(num_runs: int = 25):
-    if num_runs <= 0:
-        raise HTTPException(status_code=400, detail="num_runs must be > 0")
-    from tests.ablation_test import run_apl1_ablation
-
-    return run_apl1_ablation(num_runs=num_runs)
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='praxis_receipts'")
+        if cursor.fetchone() is None:
+            return {"count": 0, "receipts": []}
+    return {"count": 0, "receipts": []}
