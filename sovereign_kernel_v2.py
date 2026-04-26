@@ -9,8 +9,22 @@ import urllib.request
 import urllib.error
 import numpy as np
 
+DEFAULT_MODEL = "llama-3.1-8b-instant"
+MODEL_PROVIDER_CONFIG = {
+    "llama-3.1-8b-instant": {
+        "provider": "groq",
+        "env": "GROQ_API_KEY",
+        "endpoint": "https://api.groq.com/openai/v1/chat/completions",
+    },
+    "gpt-4o-mini": {
+        "provider": "openai",
+        "env": "OPENAI_API_KEY",
+        "endpoint": "https://api.openai.com/v1/chat/completions",
+    },
+}
+
 class SovereignKernel:
-    def __init__(self, seed=42, deterministic=True, trace_log_path="logs/sss50_trace.jsonl"):
+    def __init__(self, model_name=None, seed=42, deterministic=True, trace_log_path="logs/sss50_trace.jsonl"):
         # The Aureonic Triad State
         self.state = {"C": 0.33, "R": 0.33, "S": 0.34}
         self.tau = 0.05                 # Constitutional floor
@@ -37,10 +51,13 @@ class SovereignKernel:
         self.trace_log_path = trace_log_path
         self.step_counter = 0
 
-        # Groq runtime config (single provider path only).
-        self.api_key = os.environ.get("GROQ_API_KEY", "")
-        self.model = "llama-3.1-8b-instant"
-        self.endpoint = "https://api.groq.com/openai/v1/chat/completions"
+        # Runtime model/provider config.
+        self.model_name = model_name or DEFAULT_MODEL
+        model_cfg = MODEL_PROVIDER_CONFIG.get(self.model_name, MODEL_PROVIDER_CONFIG[DEFAULT_MODEL])
+        self.model = self.model_name
+        self.endpoint = model_cfg["endpoint"]
+        self.api_key_env = model_cfg["env"]
+        self.api_key = os.environ.get(self.api_key_env, "")
         os.makedirs(os.path.dirname(self.trace_log_path), exist_ok=True)
 
     def assert_governor_consistency(self):
@@ -269,11 +286,12 @@ class SovereignKernel:
     # TASK A: Wire in Groq free API
     def call_llm(self, prompt, sovereign_context="", temperature=0.7, return_raw=False):
         """
-        Groq API call using urllib.request only.
+        OpenAI-compatible provider call using urllib.request only.
         """
-        endpoint = "https://api.groq.com/openai/v1/chat/completions"
-        model = "llama-3.1-8b-instant"
-        api_key = os.environ.get("GROQ_API_KEY", "")
+        model_cfg = MODEL_PROVIDER_CONFIG.get(self.model_name, MODEL_PROVIDER_CONFIG[DEFAULT_MODEL])
+        endpoint = model_cfg["endpoint"]
+        model = self.model_name
+        api_key = os.environ.get(model_cfg["env"], "")
 
         # Step 1: Debug logging
         has_key = bool(api_key)
@@ -283,7 +301,7 @@ class SovereignKernel:
         print(f"[LLM DEBUG] endpoint={endpoint}")
 
         if not api_key:
-            raise Exception("GROQ_API_KEY is not set. Export GROQ_API_KEY before calling /praxis/run.")
+            raise Exception(f"{model_cfg['env']} is not set. Export {model_cfg['env']} before calling /praxis/run.")
         
         if self.semantic_bridge_enabled:
             existing_system_prompt = (
@@ -322,17 +340,17 @@ class SovereignKernel:
             with urllib.request.urlopen(req) as response:
                 res_data = json.loads(response.read().decode("utf-8"))
                 if "choices" not in res_data or not res_data["choices"]:
-                    raise Exception(f"Unexpected Groq response shape: {res_data}")
+                    raise Exception(f"Unexpected {model_cfg['provider']} response shape: {res_data}")
                 if return_raw:
                     return res_data
                 return res_data["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")
             raise Exception(
-                f"Groq API HTTP Error: status_code={e.code}, response_text={body}"
+                f"{model_cfg['provider'].capitalize()} API HTTP Error: status_code={e.code}, response_text={body}"
             )
         except Exception as e:
-            raise Exception(f"Groq API Error: {str(e)}")
+            raise Exception(f"{model_cfg['provider'].capitalize()} API Error: {str(e)}")
 
     # SPAN 3: ADV Entropy Scorer
     def score_adv(self, response):
