@@ -45,36 +45,54 @@ class PraxisRunRequest(BaseModel):
     bridge: Optional[bool] = None
 
 
-def _format_lex_payload(result: dict, governor_disabled: bool = False) -> dict:
-    raw_output = (result or {}).get("raw_output", "")
-    governed_output = raw_output if governor_disabled else (result or {}).get("governed_output", raw_output)
+class LexRunResponse(BaseModel):
+    raw_output: str
+    governed_output: str
+    final_output: str
+    intervention: bool
+    intervention_reason: str
+    M: float
+    semantic_diff_score: float
+
+
+def _semantic_diff_score(raw_output: str, governed_output: str) -> float:
+    raw_words = set((raw_output or "").lower().split())
+    governed_words = set((governed_output or "").lower().split())
+    union_words = raw_words | governed_words
+    if not union_words:
+        return 0.0
+    overlap = len(raw_words & governed_words) / len(union_words)
+    return round(float(1.0 - overlap), 6)
+
+
+def _run_lex_contract(payload: PraxisRunRequest) -> dict:
+    bridge_enabled = kernel.semantic_bridge_enabled if payload.bridge is None else bool(payload.bridge)
+    result = kernel.run_cycle(payload.prompt, bridge_enabled=bridge_enabled)
+    if result.get("status") == "Refused":
+        raise HTTPException(status_code=451, detail=result)
+    if result.get("status") != "Success":
+        raise HTTPException(status_code=500, detail=result)
+
+    raw_output = result.get("raw_output", "")
+    governed_output = result.get("governed_output", "")
+    if payload.disable_governor:
+        governed_output = raw_output
+
+    intervention = raw_output.strip() != governed_output.strip()
+    intervention_reason = (
+        "Lex Aureon modified the output to stabilize behavior."
+        if intervention
+        else "No intervention required; raw output already stable."
+    )
     final_output = governed_output
-
-    semantic_diff_score = float((result or {}).get("semantic_shift", 0.0) or 0.0)
-    intervention = governed_output.strip() != raw_output.strip()
-    m_value = float((result or {}).get("M", 0.0) or 0.0)
-
-    if intervention:
-        intervention_reason = "Lex governance adjusted model output for constitutional stability."
-    else:
-        intervention_reason = "No intervention required."
-
-    shareable_result_card = {
-        "headline": "Lex intercepted AI instability",
-        "prompt": (result or {}).get("receipt", {}).get("prompt", ""),
-        "intervention": intervention,
-        "diff_score": round(semantic_diff_score, 6),
-    }
-
     return {
         "raw_output": raw_output,
         "governed_output": governed_output,
         "final_output": final_output,
         "intervention": intervention,
         "intervention_reason": intervention_reason,
-        "semantic_diff_score": round(semantic_diff_score, 6),
-        "M": round(m_value, 6),
-        "shareable_result_card": shareable_result_card,
+        "M": round(float(result.get("M", 0.0)), 6),
+        "semantic_diff_score": _semantic_diff_score(raw_output, governed_output),
     }
 
 
@@ -249,24 +267,14 @@ def praxis_summary():
     }
 
 
-@app.post("/praxis/run")
+@app.post("/praxis/run", response_model=LexRunResponse)
 def praxis_run(payload: PraxisRunRequest):
-    bridge_enabled = kernel.semantic_bridge_enabled if payload.bridge is None else bool(payload.bridge)
-    result = kernel.run_cycle(payload.prompt, bridge_enabled=bridge_enabled)
-
-    if result.get("status") == "Refused":
-        raise HTTPException(status_code=451, detail=result)
-
-    lex_payload = _format_lex_payload(result, governor_disabled=payload.disable_governor)
-    lex_payload["prompt"] = payload.prompt
-    lex_payload["bridge"] = bridge_enabled
-    lex_payload["shareable_result_card"]["prompt"] = payload.prompt
-    return lex_payload
+    return _run_lex_contract(payload)
 
 
-@app.post("/lex/run")
+@app.post("/lex/run", response_model=LexRunResponse)
 def lex_run(payload: PraxisRunRequest):
-    return praxis_run(payload)
+    return _run_lex_contract(payload)
 
 
 @app.post("/praxis/divergence_test")

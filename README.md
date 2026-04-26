@@ -1,197 +1,204 @@
 # LEX AUREON
 
-**Real-time AI Trust, Safety, and Intervention Layer**
+**Lex Aureon is a real-time AI Trust Layer that makes model behavior observable, governable, and auditable.**
 
-LEX AUREON is a **live AI behavior auditor** that makes model decisions transparent in real time.
+## LEX AUREON DUAL SYSTEM
 
-For every prompt, operators can see:
-1. **RAW model output**
-2. **LEX-governed output**
-3. **Final decision** (`SAFE` or `INTERVENED`)
-4. **Why intervention happened**
-5. **Session-level trust and stability metrics**
+Lex Aureon operates as both:
 
----
+1. A theoretical AI governance framework (**Aureonics**)
+2. A deployable AI trust and intervention product layer (**Lex Aureon**)
 
-## Product Positioning
+This README is split into:
 
-LEX AUREON is not a research dashboard. It is a deployable trust product for:
-- AI teams proving safety controls to enterprise buyers,
-- compliance and risk teams auditing AI behavior,
-- platform operators monitoring intervention reliability,
-- sales/demo teams showing governance value in minutes.
-
-**What you sell:**
-- AI transparency
-- AI failure detection
-- AI correction layer
-- trust scoring
+- **SECTION A — THEORY (AUREONICS)**
+- **SECTION B — PRODUCT (LEX AUREON)**
+- **SECTION C — DEPLOYMENT & API**
 
 ---
 
-## Core Product Experience
+## SECTION A — THEORY (AUREONICS)
 
-### 1) Prompt-to-proof trust workflow
-A user submits any prompt and immediately gets:
-- **RAW output** (unaltered model behavior)
-- **GOVERNED output** (post-governor correction)
-- **FINAL decision badge** (`SAFE` vs `INTERVENED`)
-- **intervention reason trace** (semantic drift / projection / stability trigger)
+### 2.1 Core Idea
 
-### 2) One-click demo flow
-Use **🚀 Run Trust Demo** to execute a sales-ready sequence:
-- safe prompt
-- boundary prompt
-- attack prompt
+Aureonics is a system for **observing, stabilizing, and governing AI behavioral drift using measurable state variables**.
 
-Then present:
-- RAW vs LEX vs FINAL comparison
-- intervention-rate snapshot
-- clear evidence of corrective governance behavior
+The core assumption is simple: model behavior can shift over time or under adversarial prompts, so governance must be continuous, measurable, and actionable.
 
-### 3) Session monetization signal
-The **Session Insight** card summarizes:
-- total prompts
-- intervention rate %
-- average `semantic_diff_score`
-- system classification (`SAFE` / `STABLE` / `UNSTABLE`)
+### 2.2 Core Variables (Simplified)
 
-### 4) Exportable trust artifact
-Export generates a **LEX TRUST REPORT** including:
-- session summary
-- stability metrics
-- intervention breakdown
-- system classification
-- timestamp
+- **C (Constraint):** how well the model respects boundaries and safety constraints.
+- **R (Reasoning):** how coherent and useful the model’s reasoning remains.
+- **S (Stability):** how stable behavior is across changes in prompt conditions.
+- **M = min(C, R, S):** the weakest-link score.
 
-Output format:
-- machine-readable JSON
-- human-readable summary block for customer handoff
+`M` represents system health and governs intervention behavior. When `M` degrades, governance pressure increases.
 
-### 5) Subscription-ready upsell structure
-UI includes a placeholder for:
+### 2.3 Concept of Governance
 
-**Unlock Advanced Governance Insights**
-- Extended research graphs
-- Multi-session analytics
-- API access logs
+Aureonics governance is operational, not symbolic:
 
-This supports future paid tiers without changing core governance logic.
+- AI is **not trusted blindly**.
+- AI is **continuously observed**.
+- Deviations **trigger intervention**.
+
+This means trust is produced through runtime evidence, not assumptions.
 
 ---
 
-## Technical Boundary (Locked Core)
+## SECTION B — PRODUCT (LEX AUREON)
 
-The following are intentionally treated as protected governance kernel surfaces:
-- triad logic
-- CBF mechanics
-- governor kernel behavior
-- constitutional safety core
+## LEX AUREON = AI TRUST & INTERVENTION LAYER
 
-Product hardening should focus on:
-- UX clarity
-- traceability
-- reporting/export
-- operator confidence and buyer proof
+### 3.1 What It Does
+
+Lex Aureon:
+
+- runs any LLM prompt,
+- compares **raw** vs **governed** output,
+- detects instability or unsafe drift,
+- optionally intervenes,
+- returns a strict, auditable response contract.
+
+### 3.2 Locked Output Structure
+
+All production entry points are aligned to the same schema:
+
+```json
+{
+  "raw_output": "",
+  "governed_output": "",
+  "final_output": "",
+  "intervention": true,
+  "intervention_reason": "",
+  "M": 0.0,
+  "semantic_diff_score": 0.0
+}
+```
+
+### 3.3 Value Proposition
+
+**Lex Aureon makes AI behavior observable, controllable, and auditable.**
+
+### 3.4 Use Cases
+
+- AI safety layer for applications
+- enterprise AI auditing
+- prompt risk detection
+- LLM behavior transparency
+- compliance logging and incident review
+
+### Frontend Product Behavior
+
+The dashboard is centered on product clarity:
+
+- **RAW OUTPUT** panel
+- **LEX GOVERNED** panel
+- **FINAL OUTPUT** panel
+- **INTERVENTION** badge
+
+When intervention occurs, the system visibly explains why the output was modified.
+
+### Demo Mode (Sales)
+
+`DEMO_MODE = true` (UI toggle) emphasizes sales clarity by:
+
+- exaggerating intervention explanation clarity,
+- highlighting raw vs final differences,
+- rendering a human-readable Lex verdict.
+
+This is a presentation mode and not a change to backend governance logic.
+
+### One-Click Share Flow
+
+The share flow is built around a copy-ready card containing:
+
+- prompt
+- `raw_output` (shortened)
+- `final_output`
+- intervention badge
+- `M` score
+- Lex verdict sentence
+
+CTA: **Copy Share Card**.
+
+---
+
+## SECTION C — DEPLOYMENT & API
+
+### System Architecture
+
+Runtime flow:
+
+1. User prompt
+2. LLM generates raw output
+3. Lex evaluates state (`M`)
+4. Intervention decision
+5. Governed output generated
+6. Final output returned
+
+### API
+
+#### `POST /lex/run`
+
+Input:
+
+```json
+{ "prompt": "string", "bridge": true }
+```
+
+Output:
+
+Structured JSON with the locked schema shown above.
+
+#### Compatibility
+
+`POST /praxis/run` returns the same exact response schema as `/lex/run`.
+
+---
+
+## Commercial Model
+
+- **Free tier:** limited runs
+- **Pro tier:** unlimited usage
+- **API tier:** developer access
+- **Enterprise tier:** compliance integration
 
 ---
 
 ## Quick Start
 
-### 1) Create and activate virtual environment
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-```
-
-### 2) Install dependencies
-```bash
 pip install -r requirements.txt
-```
-
-### 3) Run the app
-```bash
 uvicorn app.main:app --reload
 ```
 
-### 4) Open local interfaces
+Open:
+
 - API docs: `http://127.0.0.1:8000/docs`
-- Trust console: `http://127.0.0.1:8000/dashboard`
+- Dashboard: `http://127.0.0.1:8000/dashboard`
 
 ---
 
-## Key API Endpoints
+## Internal Research Notes
 
-### Trust and governance runtime
-- `POST /praxis/run`
-- `GET /praxis`
-- `GET /praxis/summary`
-- `POST /praxis/run`
-- `GET /praxis/health`
+The following are internal validation systems used for development only and are not part of the product narrative:
 
-### Simulation and stress testing
-- `POST /simulate`
-- `GET /simulate_adaptive`
-- `GET /cbf/simulate`
-- `GET /cbf/compare`
-- `GET /cbf/multi_seed`
+- SSS-50
+- SVL-2
+- CPL-1
+- FPL-1
+- APL-1
 
 ---
 
-## Sales Demo Script (5 Minutes)
+## Final Product Intent
 
-1. **Open console** and state: “You will see what the model said, what LEX changed, and why.”
-2. Click **Run Trust Demo**.
-3. For safe prompt: emphasize pass-through behavior and trust consistency.
-4. For boundary prompt: show partial corrections and explanation trace.
-5. For attack prompt: show `🔴 LEX INTERVENED` and explicit behavior modification notice.
-6. Open **Session Insight** and read intervention rate + classification.
-7. Export **LEX TRUST REPORT** and frame it as compliance/customer proof.
+A new reader should immediately understand:
 
----
-
-## First Monetization Path
-
-### Ideal first customers
-- Teams shipping copilots into regulated environments
-- AI-first SaaS companies needing trust telemetry for enterprise deals
-- Integrators implementing governance wrappers around third-party LLM APIs
-
-### Suggested entry offer
-- **Pilot package (2–4 weeks):** runtime deployment + trust reporting + intervention tuning
-- Deliverables: live console access, weekly trust report exports, intervention audit readout
-- Expansion path: advanced analytics tier + API access logs + multi-session governance intelligence
-
----
-
-## Environment Notes
-
-- Set `GROQ_API_KEY` for live model execution on `/praxis/run`.
-- Default local database: `praxis.db`.
-- Override with `DB_PATH` environment variable.
-- `/praxis/run` may return HTTP `451` when constitutional refusal triggers.
-
----
-
-## Repository Layout
-
-```text
-app/
-  controllers/
-  services/
-  models/
-  static/
-  main.py
-tests/
-docs/
-```
-
----
-
-## Status
-
-LEX AUREON is now positioned as a **productized trust layer** with:
-- real-time intervention transparency,
-- operator-facing evidence,
-- exportable customer proof,
-- clear packaging for paid governance offerings.
+- what problem Lex Aureon solves,
+- why runtime AI governance matters,
+- how to integrate it,
+- how the system monetizes.
