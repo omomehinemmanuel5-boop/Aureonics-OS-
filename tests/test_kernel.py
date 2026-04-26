@@ -44,12 +44,31 @@ class TestSovereignKernel(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
 
             payload = response.json()
-            self.assertEqual(payload["status"], "Success")
-            state = payload["state"]
-            total = state["C"] + state["R"] + state["S"]
-            self.assertAlmostEqual(total, 1.0, places=6)
-            self.assertGreaterEqual(min(state.values()), kernel.tau)
-            self.assertIn("receipt", payload)
+            self.assertIn("raw_output", payload)
+            self.assertIn("governed_output", payload)
+            self.assertIn("final_output", payload)
+            self.assertIn("intervention", payload)
+            self.assertIn("semantic_diff_score", payload)
+            self.assertIn("M", payload)
+            self.assertIn("shareable_result_card", payload)
+            self.assertGreaterEqual(payload["M"], 0.0)
+        finally:
+            kernel.call_llm = original_call_llm
+            kernel.state = original_state
+
+
+    def test_lex_run_endpoint_alias(self):
+        original_call_llm = kernel.call_llm
+        original_state = dict(kernel.state)
+
+        try:
+            kernel.call_llm = lambda prompt: "Stable model output."
+            client = TestClient(app)
+            response = client.post("/lex/run", json={"prompt": "Summarize this contract."})
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertIn("final_output", payload)
+            self.assertIn("intervention_reason", payload)
         finally:
             kernel.call_llm = original_call_llm
             kernel.state = original_state

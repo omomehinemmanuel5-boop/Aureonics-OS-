@@ -45,6 +45,39 @@ class PraxisRunRequest(BaseModel):
     bridge: Optional[bool] = None
 
 
+def _format_lex_payload(result: dict, governor_disabled: bool = False) -> dict:
+    raw_output = (result or {}).get("raw_output", "")
+    governed_output = raw_output if governor_disabled else (result or {}).get("governed_output", raw_output)
+    final_output = governed_output
+
+    semantic_diff_score = float((result or {}).get("semantic_shift", 0.0) or 0.0)
+    intervention = governed_output.strip() != raw_output.strip()
+    m_value = float((result or {}).get("M", 0.0) or 0.0)
+
+    if intervention:
+        intervention_reason = "Lex governance adjusted model output for constitutional stability."
+    else:
+        intervention_reason = "No intervention required."
+
+    shareable_result_card = {
+        "headline": "Lex intercepted AI instability",
+        "prompt": (result or {}).get("receipt", {}).get("prompt", ""),
+        "intervention": intervention,
+        "diff_score": round(semantic_diff_score, 6),
+    }
+
+    return {
+        "raw_output": raw_output,
+        "governed_output": governed_output,
+        "final_output": final_output,
+        "intervention": intervention,
+        "intervention_reason": intervention_reason,
+        "semantic_diff_score": round(semantic_diff_score, 6),
+        "M": round(m_value, 6),
+        "shareable_result_card": shareable_result_card,
+    }
+
+
 def _db_path() -> str:
     return os.environ.get("DB_PATH", "praxis.db")
 
@@ -221,21 +254,19 @@ def praxis_run(payload: PraxisRunRequest):
     bridge_enabled = kernel.semantic_bridge_enabled if payload.bridge is None else bool(payload.bridge)
     result = kernel.run_cycle(payload.prompt, bridge_enabled=bridge_enabled)
 
-    if result.get("status") == "Success":
-        raw_response = result.get("raw_output", "")
-        governed_response = result.get("governed_output", "")
-        if payload.disable_governor:
-            governed_response = raw_response
-        result["raw_output"] = raw_response
-        result["governed_output"] = governed_response
-        result["raw_response"] = raw_response
-        result["governed_response"] = governed_response
-        result["response"] = governed_response
-        result["governor_disabled"] = payload.disable_governor
-        result["bridge"] = bridge_enabled
-    elif result.get("status") == "Refused":
+    if result.get("status") == "Refused":
         raise HTTPException(status_code=451, detail=result)
-    return result
+
+    lex_payload = _format_lex_payload(result, governor_disabled=payload.disable_governor)
+    lex_payload["prompt"] = payload.prompt
+    lex_payload["bridge"] = bridge_enabled
+    lex_payload["shareable_result_card"]["prompt"] = payload.prompt
+    return lex_payload
+
+
+@app.post("/lex/run")
+def lex_run(payload: PraxisRunRequest):
+    return praxis_run(payload)
 
 
 @app.post("/praxis/divergence_test")
