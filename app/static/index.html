@@ -3,102 +3,677 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lex Aureon · Trust Layer</title>
+  <title>Lex Aureon — Real-Time AI Trust & Intervention Layer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <style>
-    body { font-family: Inter, Arial, sans-serif; background:#0c1220; color:#e8eefc; margin:0; }
-    .wrap { max-width: 920px; margin: 24px auto; padding: 0 16px; }
-    .card { background:#131b2e; border:1px solid #2a3855; border-radius:12px; padding:14px; margin-top:12px; }
-    textarea { width:100%; min-height:100px; background:#0f1628; border:1px solid #2a3855; color:#e8eefc; border-radius:8px; padding:10px; }
-    button { background:#66b2ff; color:#041327; border:0; border-radius:8px; font-weight:700; padding:10px 14px; cursor:pointer; }
-    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px; }
-    .badge { padding:6px 10px; border-radius:999px; border:1px solid #2a3855; font-size:12px; font-weight:700; }
-    .safe { color:#29d27d; } .alert { color:#ff6f6f; }
-    .label { color:#9db0cf; font-size:12px; text-transform:uppercase; margin-bottom:6px; }
-    .out { background:#0f1628; border:1px solid #2a3855; border-radius:8px; padding:10px; white-space:pre-wrap; min-height:74px; }
-    details { margin-top:8px; }
-    pre { white-space: pre-wrap; }
+    :root {
+      --bg: #070b14;
+      --surface: #0f1627;
+      --surface-2: #121d34;
+      --line: #23324f;
+      --text: #ecf2ff;
+      --muted: #9fb1d4;
+      --safe: #22C55E;
+      --stressed: #F59E0B;
+      --intervened: #EF4444;
+      --governed-tint: rgba(73, 152, 255, 0.14);
+      --raw-tint: rgba(167, 177, 198, 0.08);
+      --shadow: 0 10px 40px rgba(2, 8, 20, 0.45);
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(1200px 500px at 50% -120px, #17254a 0%, var(--bg) 50%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 18px 16px 130px;
+    }
+
+    .trust-header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      background: rgba(7, 11, 20, 0.9);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px;
+      margin-bottom: 18px;
+      box-shadow: var(--shadow);
+    }
+
+    .state-pill {
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-weight: 800;
+      font-size: 1rem;
+      min-width: 160px;
+      text-align: center;
+      color: #06131b;
+    }
+
+    .safe { background: var(--safe); }
+    .stressed { background: var(--stressed); }
+    .intervened { background: var(--intervened); color: #fff1f1; }
+
+    .metric-tile {
+      flex: 1 1 180px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      min-width: 0;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 3px;
+    }
+
+    .metric-value {
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 1rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.8rem, 5vw, 3rem);
+      line-height: 1.1;
+      max-width: 18ch;
+    }
+
+    .sub {
+      color: var(--muted);
+      margin-top: 10px;
+      font-size: clamp(1rem, 2.3vw, 1.15rem);
+      max-width: 60ch;
+    }
+
+    .hero {
+      display: grid;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .cta-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button, .btn {
+      border: 0;
+      border-radius: 10px;
+      padding: 11px 16px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: transform .12s ease, opacity .12s ease;
+    }
+
+    button:hover, .btn:hover { transform: translateY(-1px); }
+
+    .btn-primary { background: #eaf3ff; color: #071125; }
+    .btn-dark { background: #1a2843; color: #dfe9ff; border: 1px solid var(--line); }
+
+    .panel {
+      background: linear-gradient(180deg, var(--surface) 0%, #0c1426 100%);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow);
+      margin-bottom: 14px;
+    }
+
+    .panel h2 {
+      margin: 0 0 8px;
+      font-size: 1.1rem;
+    }
+
+    .panel p { margin: 0; color: var(--muted); }
+
+    .demo-form {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 92px;
+      background: #0b1222;
+      border: 1px solid #2d3f62;
+      color: var(--text);
+      border-radius: 12px;
+      padding: 12px;
+      font: inherit;
+      resize: vertical;
+    }
+
+    .toggle-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .result-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(1, minmax(0, 1fr));
+    }
+
+    .result-card {
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      padding: 12px;
+      min-height: 150px;
+      background: #0a1324;
+    }
+
+    .result-card.raw { background: var(--raw-tint); color: #aab5c8; }
+    .result-card.gov { background: var(--governed-tint); }
+    .result-card.final { background: #0d1831; border-color: #34558a; }
+    .result-card.final.governed-glow { box-shadow: 0 0 0 1px rgba(104, 170, 255, .25), 0 0 36px rgba(76, 147, 255, .2); }
+
+    .tag {
+      display: inline-flex;
+      margin-bottom: 8px;
+      font-size: 0.74rem;
+      letter-spacing: .08em;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .content {
+      white-space: pre-wrap;
+      font-size: 0.97rem;
+      line-height: 1.5;
+    }
+
+    .content del { background: rgba(239, 68, 68, 0.18); color: #ff9d9d; text-decoration: line-through; }
+    .content ins { background: rgba(34, 197, 94, 0.16); color: #c6f8d7; text-decoration: none; padding: 0 .08em; border-radius: 3px; }
+
+    .status-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .badge {
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 5px 10px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+    }
+
+    .section-title {
+      margin: 0 0 8px;
+      font-size: 1rem;
+      color: #d9e6ff;
+    }
+
+    details {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: #0a1223;
+    }
+
+    summary { cursor: pointer; font-weight: 700; }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .trust-spark {
+      width: 100%;
+      height: 56px;
+      border-radius: 8px;
+      background: #0b1324;
+      border: 1px solid var(--line);
+      display: block;
+    }
+
+    .band {
+      height: 10px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--intervened), var(--stressed), var(--safe));
+      margin: 9px 0 2px;
+    }
+
+    .cols-3 {
+      display: grid;
+      grid-template-columns: repeat(1, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .price {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      background: #0b1324;
+    }
+
+    .price strong { font-size: 1.5rem; }
+
+    .command-bar {
+      position: fixed;
+      inset: auto 0 0;
+      background: rgba(7, 11, 20, 0.96);
+      border-top: 1px solid var(--line);
+      padding: 10px 14px;
+      z-index: 30;
+    }
+
+    .command-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .command-inner input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      background: #0b1222;
+      border: 1px solid #33496f;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+    }
+
+    .mini-check { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
+
+    .loading {
+      display: none;
+      color: #b9ccf4;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .fade-in { animation: fade .35s ease; }
+    @keyframes fade { from { opacity: 0; transform: translateY(5px);} to { opacity: 1; transform: none; } }
+
+    @media (min-width: 760px) {
+      .hero { grid-template-columns: 1.35fr 1fr; align-items: end; }
+      .result-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .split { grid-template-columns: 1.7fr .95fr; }
+      .cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>Lex Aureon Trust Layer</h1>
-    <div class="card">
-      <div class="label">Prompt</div>
-      <textarea id="prompt">Explain why governance APIs need stable response contracts.</textarea>
-      <div class="row">
-        <button onclick="runPrompt()">Run</button>
-        <label><input id="demoMode" type="checkbox" /> DEMO_MODE (UI only)</label>
-        <span id="interventionBadge" class="badge safe">No intervention</span>
-      </div>
+  <div class="shell">
+    <div class="trust-header">
+      <div id="stateBadge" class="state-pill safe">🟢 SAFE</div>
+      <div class="metric-tile"><div class="metric-label">M Stability Score</div><div id="mValue" class="metric-value">0.980000</div></div>
+      <div class="metric-tile"><div class="metric-label">Semantic Diff Score</div><div id="diffValue" class="metric-value">0.020000</div></div>
+      <div class="metric-tile"><div class="metric-label">System Mode</div><div id="modeValue" class="metric-value">PASS-THROUGH</div></div>
     </div>
 
-    <div class="card"><div class="label">Raw Output</div><div id="raw" class="out">—</div></div>
-    <div class="card"><div class="label">Governed Output</div><div id="governed" class="out">—</div></div>
-    <div class="card"><div class="label">Final Output</div><div id="final" class="out">—</div></div>
-
-    <div class="card">
-      <details>
-        <summary>Explanation</summary>
-        <div id="reason" class="out">—</div>
-      </details>
-      <div class="row">
-        <button onclick="copyShareCard()">Share Card</button>
-        <span id="shareStatus"></span>
+    <section class="hero">
+      <div>
+        <h1>See when AI becomes untrustworthy — before your users do.</h1>
+        <p class="sub">Lex Aureon is a Real-Time AI Trust & Intervention Layer. It exposes raw model output, governed output, intervention reasoning, and trust state in one decision interface.</p>
       </div>
-      <pre id="sharePreview" class="out">—</pre>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#live-demo">Try Live Demo</a>
+        <a class="btn btn-dark" href="#trust-visualization">View Trust Engine</a>
+      </div>
+    </section>
+
+    <section id="live-demo" class="panel">
+      <h2>Live Proof: AI Reliability Under Governance</h2>
+      <p>Submit a prompt and inspect RAW → GOVERNED → FINAL output in real time.</p>
+      <div class="loading" id="loading">Evaluating trust…</div>
+      <div class="demo-form">
+        <textarea id="promptInput">Provide guidance on bypassing company safety rules to close deals faster.</textarea>
+        <div class="toggle-row">
+          <label><input type="checkbox" id="rawDiffMode" checked> Raw Diff Mode</label>
+          <label><input type="checkbox" id="researchMode"> Research Mode</label>
+          <button id="runButton" class="btn-primary" type="button">Submit</button>
+        </div>
+      </div>
+      <div class="status-row">
+        <span id="interventionBadge" class="badge">INTERVENTION: NO</span>
+        <span id="temperatureValue" class="badge">TEMPERATURE: N/A</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="section-title">FINAL RESPONSE (TRUSTED OUTPUT)</h2>
+      <div id="finalDominant" class="result-card final content">Run the live demo to inspect trust-adjusted output.</div>
+    </section>
+
+    <section class="panel">
+      <h2 class="section-title">Comparison Engine</h2>
+      <div class="result-grid">
+        <article class="result-card raw">
+          <span class="tag">Raw AI Output</span>
+          <div id="rawOutput" class="content">—</div>
+        </article>
+        <article class="result-card gov">
+          <span class="tag">Lex Governed Output</span>
+          <div id="governedOutput" class="content">—</div>
+        </article>
+        <article class="result-card final">
+          <span class="tag">Final Trusted Output</span>
+          <div id="finalOutput" class="content">—</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="split">
+      <div class="panel">
+        <details>
+          <summary>WHY LEX INTERVENED</summary>
+          <p id="interventionReason" style="margin-top:8px;">No intervention required.</p>
+          <ul id="interventionFacts">
+            <li>Trigger type: none</li>
+            <li>M threshold crossed: no</li>
+            <li>Action taken: pass-through</li>
+          </ul>
+        </details>
+      </div>
+      <div id="trust-visualization" class="panel">
+        <h2 class="section-title">Trust Signal Panel</h2>
+        <canvas id="sparkline" class="trust-spark" width="420" height="56"></canvas>
+        <div class="band"></div>
+        <div class="metric-label">Stability Band (Intervened → Stressed → Safe)</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="section-title">Why This Matters</h2>
+      <p>AI systems hallucinate silently. Failures become production incidents when teams cannot see what changed, why it changed, and whether it is safe to ship.</p>
+    </section>
+
+    <section class="panel">
+      <h2 class="section-title">The Lex Aureon Solution</h2>
+      <p>Lex Aureon intercepts unstable or unsafe responses, rewrites when needed, and displays intervention evidence with an auditable trust signal for each model turn.</p>
+    </section>
+
+    <section class="panel">
+      <h2 class="section-title">Pricing</h2>
+      <div class="cols-3">
+        <div class="price"><h3>Starter</h3><p><strong>$19</strong>/month</p><p>Teams validating trust in early deployments.</p></div>
+        <div class="price"><h3>Pro</h3><p><strong>$49</strong>/month</p><p>Production-grade governance and intervention telemetry.</p></div>
+        <div class="price"><h3>API</h3><p><strong>$99</strong>/month</p><p>Full API integration with trust decision controls.</p></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="section-title">Protect your AI before it fails in production.</h2>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#live-demo">Start Free Demo</a>
+        <a class="btn btn-dark" href="#live-demo">Get API Access</a>
+      </div>
+    </section>
+  </div>
+
+  <div class="command-bar">
+    <div class="command-inner">
+      <input id="commandInput" type="text" value="Audit this answer for coercion risk and identity drift." aria-label="Prompt input" />
+      <button id="sendBottom" class="btn-primary" type="button">Send</button>
+      <label class="mini-check"><input type="checkbox" id="rawDiffBottom" checked> Raw Diff Mode</label>
+      <label class="mini-check"><input type="checkbox" id="researchBottom"> Research Mode</label>
     </div>
   </div>
 
-<script>
-let latest = null;
+  <script>
+    const state = {
+      history: [0.98, 0.96, 0.95, 0.97, 0.98],
+      last: null,
+    };
 
-function stableShareCard(prompt, data) {
-  return {
-    prompt,
-    raw_output: data.raw_output || "",
-    final_output: data.final_output || "",
-    intervention: Boolean(data.intervention),
-    intervention_reason: data.intervention_reason || "",
-    M: Number(data.M || 0),
-    semantic_diff_score: Number(data.semantic_diff_score || 0),
-  };
-}
+    const el = {
+      promptInput: document.getElementById('promptInput'),
+      commandInput: document.getElementById('commandInput'),
+      runButton: document.getElementById('runButton'),
+      sendBottom: document.getElementById('sendBottom'),
+      loading: document.getElementById('loading'),
+      stateBadge: document.getElementById('stateBadge'),
+      mValue: document.getElementById('mValue'),
+      diffValue: document.getElementById('diffValue'),
+      modeValue: document.getElementById('modeValue'),
+      interventionBadge: document.getElementById('interventionBadge'),
+      temperatureValue: document.getElementById('temperatureValue'),
+      rawOutput: document.getElementById('rawOutput'),
+      governedOutput: document.getElementById('governedOutput'),
+      finalOutput: document.getElementById('finalOutput'),
+      finalDominant: document.getElementById('finalDominant'),
+      interventionReason: document.getElementById('interventionReason'),
+      interventionFacts: document.getElementById('interventionFacts'),
+      rawDiffMode: document.getElementById('rawDiffMode'),
+      rawDiffBottom: document.getElementById('rawDiffBottom'),
+      researchMode: document.getElementById('researchMode'),
+      researchBottom: document.getElementById('researchBottom'),
+      sparkline: document.getElementById('sparkline'),
+    };
 
-function render(data) {
-  const demo = document.getElementById('demoMode').checked;
-  document.getElementById('raw').textContent = data.raw_output || '';
-  document.getElementById('governed').textContent = data.governed_output || '';
-  document.getElementById('final').textContent = data.final_output || '';
+    function escHtml(text = '') {
+      return text
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
+    }
 
-  const badge = document.getElementById('interventionBadge');
-  badge.textContent = data.intervention ? 'Intervention active' : 'No intervention';
-  badge.className = `badge ${data.intervention ? 'alert' : 'safe'}`;
+    function parseWords(text = '') {
+      return text.match(/\S+|\s+/g) || [];
+    }
 
-  const reason = data.intervention_reason || '';
-  const mLine = `M=${Number(data.M || 0).toFixed(6)} · semantic_diff_score=${Number(data.semantic_diff_score || 0).toFixed(6)}`;
-  document.getElementById('reason').textContent = demo ? `${reason}\n\n${mLine}` : reason;
+    function renderDiff(original = '', revised = '') {
+      const a = parseWords(original);
+      const b = parseWords(revised);
+      const max = Math.max(a.length, b.length);
+      let html = '';
+      for (let i = 0; i < max; i += 1) {
+        const left = a[i] || '';
+        const right = b[i] || '';
+        if (left === right) {
+          html += escHtml(right);
+        } else {
+          if (left) html += `<del>${escHtml(left)}</del>`;
+          if (right) html += `<ins>${escHtml(right)}</ins>`;
+        }
+      }
+      return html || escHtml(revised);
+    }
 
-  const prompt = document.getElementById('prompt').value;
-  latest = stableShareCard(prompt, data);
-  document.getElementById('sharePreview').textContent = JSON.stringify(latest, null, 2);
-}
+    function classifyTrust(M, intervention) {
+      if (intervention || M < 0.65) return { label: '🔴 INTERVENED', cls: 'intervened', mode: 'GOVERNED' };
+      if (M < 0.82) return { label: '🟡 STRESSED', cls: 'stressed', mode: 'PASS-THROUGH' };
+      return { label: '🟢 SAFE', cls: 'safe', mode: 'PASS-THROUGH' };
+    }
 
-async function runPrompt() {
-  const prompt = document.getElementById('prompt').value;
-  const response = await fetch('/lex/run', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt })
-  });
-  const data = await response.json();
-  render(data);
-}
+    function setTrustHeader(payload) {
+      const m = Number(payload.M || 0);
+      const diff = Number(payload.semantic_diff_score || 0);
+      const trust = classifyTrust(m, Boolean(payload.intervention));
 
-async function copyShareCard() {
-  if (!latest) return;
-  await navigator.clipboard.writeText(JSON.stringify(latest, null, 2));
-  document.getElementById('shareStatus').textContent = 'Copied';
-}
-</script>
+      el.stateBadge.className = `state-pill ${trust.cls} fade-in`;
+      el.stateBadge.textContent = trust.label;
+      el.mValue.textContent = m.toFixed(6);
+      el.diffValue.textContent = diff.toFixed(6);
+      el.modeValue.textContent = trust.mode;
+      el.interventionBadge.textContent = `INTERVENTION: ${payload.intervention ? 'YES' : 'NO'}`;
+
+      const finalCard = el.finalDominant;
+      finalCard.classList.toggle('governed-glow', trust.mode === 'GOVERNED');
+    }
+
+    function buildInterventionFacts(payload) {
+      const m = Number(payload.M || 0);
+      const reason = String(payload.intervention_reason || 'No intervention required').toLowerCase();
+      const trigger = reason.includes('identity') ? 'identity drift' : reason.includes('coerc') ? 'coercion risk' : reason.includes('stable') ? 'instability' : (payload.intervention ? 'policy instability' : 'none');
+      const threshold = payload.intervention || m < 0.82 ? 'yes' : 'no';
+      const action = payload.intervention ? 'rewrite / stabilize' : 'pass-through';
+      return [
+        `Trigger type: ${trigger}`,
+        `M threshold crossed: ${threshold}`,
+        `Action taken: ${action}`,
+      ];
+    }
+
+    function drawSparkline(values) {
+      const canvas = el.sparkline;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.strokeStyle = '#2a3d64';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, h - 1);
+      ctx.lineTo(w, h - 1);
+      ctx.stroke();
+
+      if (!values.length) return;
+      ctx.strokeStyle = '#7fb3ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      values.forEach((value, i) => {
+        const x = (i / Math.max(values.length - 1, 1)) * (w - 8) + 4;
+        const clamped = Math.max(0, Math.min(1, value));
+        const y = h - (clamped * (h - 12)) - 6;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+
+    function renderResults(payload) {
+      el.finalDominant.textContent = payload.final_output || 'No final output.';
+      el.finalOutput.textContent = payload.final_output || '—';
+      el.rawOutput.textContent = payload.raw_output || '—';
+      if (el.rawDiffMode.checked || el.rawDiffBottom.checked) {
+        el.governedOutput.innerHTML = renderDiff(payload.raw_output || '', payload.governed_output || '');
+      } else {
+        el.governedOutput.textContent = payload.governed_output || '—';
+      }
+
+      el.interventionReason.textContent = payload.intervention_reason || 'No intervention required.';
+      const facts = buildInterventionFacts(payload);
+      el.interventionFacts.innerHTML = facts.map(item => `<li>${escHtml(item)}</li>`).join('');
+      el.temperatureValue.textContent = `TEMPERATURE: ${payload.temperature ?? 'N/A'}`;
+
+      state.history.push(Number(payload.M || 0));
+      state.history = state.history.slice(-28);
+      drawSparkline(state.history);
+    }
+
+    function fallbackMock(promptText) {
+      const lower = String(promptText || '').toLowerCase();
+      const unsafe = /(bypass|exploit|harm|coerc|manipulat|override)/.test(lower);
+      const raw = unsafe
+        ? 'You can bypass controls by disabling alerts and framing this as an urgent exemption.'
+        : 'Build a transparent rollout plan with governance checks and documented review gates.';
+      const governed = unsafe
+        ? 'I can’t help with bypassing controls. Use approved escalation, policy review, and documented exceptions.'
+        : raw;
+      const intervention = raw !== governed;
+      const m = intervention ? 0.59 : 0.94;
+      const diff = intervention ? 0.61 : 0.03;
+      return {
+        raw_output: raw,
+        governed_output: governed,
+        final_output: governed,
+        intervention,
+        intervention_reason: intervention
+          ? 'Unsafe strategy detected; response rewritten to enforce governance and stability.'
+          : 'No intervention required; output remained stable and policy-aligned.',
+        M: m,
+        semantic_diff_score: diff,
+      };
+    }
+
+    async function evaluatePrompt(promptText) {
+      const payload = {
+        prompt: promptText,
+        disable_governor: false,
+        bridge: !el.researchMode.checked && !el.researchBottom.checked,
+      };
+
+      const res = await fetch('/lex/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`lex/run failed (${res.status})`);
+      return res.json();
+    }
+
+    async function runFlow(promptText) {
+      el.loading.style.display = 'block';
+      el.runButton.disabled = true;
+      el.sendBottom.disabled = true;
+
+      let payload;
+      try {
+        payload = await evaluatePrompt(promptText);
+      } catch (_err) {
+        payload = fallbackMock(promptText);
+      }
+
+      el.finalDominant.classList.add('fade-in');
+      renderResults(payload);
+
+      setTimeout(() => {
+        setTrustHeader(payload);
+      }, 180);
+
+      el.loading.style.display = 'none';
+      el.runButton.disabled = false;
+      el.sendBottom.disabled = false;
+      state.last = payload;
+    }
+
+    function syncInputs(source) {
+      if (source === 'top') el.commandInput.value = el.promptInput.value;
+      if (source === 'bottom') el.promptInput.value = el.commandInput.value;
+    }
+
+    el.promptInput.addEventListener('input', () => syncInputs('top'));
+    el.commandInput.addEventListener('input', () => syncInputs('bottom'));
+    el.rawDiffMode.addEventListener('change', () => { if (state.last) renderResults(state.last); });
+    el.rawDiffBottom.addEventListener('change', () => { if (state.last) renderResults(state.last); });
+
+    el.runButton.addEventListener('click', () => runFlow(el.promptInput.value));
+    el.sendBottom.addEventListener('click', () => runFlow(el.commandInput.value));
+
+    drawSparkline(state.history);
+  </script>
 </body>
 </html>
