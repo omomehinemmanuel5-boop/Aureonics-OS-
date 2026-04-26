@@ -750,6 +750,31 @@
           <span class="flag-chip" id="svlClassification">Classification: —</span>
         </div>
       </div>
+      <div class="chart-card" style="margin-top:12px">
+        <div class="chart-title">CROSS-MODEL VALIDATION</div>
+        <div class="chart-sub">SVL-2 compares stability invariants across available providers/models.</div>
+        <button class="btn btn-secondary" style="max-width:320px" onclick="runSVL2()">Run SVL-2 Cross-Model Validation</button>
+        <div class="flag-row">
+          <span class="flag-chip" id="svl2DeltaMeanM">Δ mean_M: —</span>
+          <span class="flag-chip" id="svl2DeltaProjectionDensity">Δ projection_density: —</span>
+          <span class="flag-chip" id="svl2Classification">Final classification: —</span>
+        </div>
+        <div style="overflow:auto;max-height:260px;margin-top:8px">
+          <table class="mono-table" id="svl2Table">
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>mean_M_avg</th>
+                <th>mean_M_std</th>
+                <th>failure_rate</th>
+                <th>projection_density_avg</th>
+                <th>pre_projection_violation_rate</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="6" style="color:var(--muted)">No SVL-2 run yet.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- Safety Monitor -->
@@ -1483,6 +1508,45 @@
     } catch (e) {
       meanEl.textContent = 'Mean Stability ± Std: failed';
       classEl.textContent = `Classification: error (${e})`;
+    }
+  }
+
+  async function runSVL2() {
+    const deltaMeanEl = el('svl2DeltaMeanM');
+    const deltaProjEl = el('svl2DeltaProjectionDensity');
+    const classEl = el('svl2Classification');
+    const tableBody = el('svl2Table').querySelector('tbody');
+
+    deltaMeanEl.textContent = 'Δ mean_M: running…';
+    deltaProjEl.textContent = 'Δ projection_density: —';
+    classEl.textContent = 'Final classification: —';
+    tableBody.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">Running SVL-2...</td></tr>';
+
+    try {
+      const res = await fetch('/praxis/svl2?num_runs=25', { method: 'POST' });
+      const data = await res.json();
+      const results = data.all_results || {};
+      const rows = Object.entries(results).map(([name, metrics]) => `
+        <tr>
+          <td>${name}</td>
+          <td>${Number(metrics.mean_M_avg || 0).toFixed(4)}</td>
+          <td>${Number(metrics.mean_M_std || 0).toFixed(4)}</td>
+          <td>${(Number(metrics.failure_rate || 0) * 100).toFixed(1)}%</td>
+          <td>${Number(metrics.projection_density_avg || 0).toFixed(4)}</td>
+          <td>${Number(metrics.pre_projection_violation_rate || 0).toFixed(4)}</td>
+        </tr>
+      `).join('');
+      tableBody.innerHTML = rows || '<tr><td colspan="6" style="color:var(--muted)">No eligible model keys found.</td></tr>';
+
+      deltaMeanEl.textContent = `Δ mean_M: ${Number(data.delta_mean_M || 0).toFixed(4)}`;
+      deltaProjEl.textContent = `Δ projection_density: ${Number(data.delta_projection_density || 0).toFixed(4)}`;
+      const skippedCount = (data.skipped_models || []).length;
+      const suffix = skippedCount ? ` · skipped_models=${skippedCount}` : '';
+      classEl.textContent = `Final classification: ${data.status || 'UNKNOWN'}${suffix}`;
+    } catch (e) {
+      deltaMeanEl.textContent = 'Δ mean_M: failed';
+      classEl.textContent = `Final classification: error (${e})`;
+      tableBody.innerHTML = '<tr><td colspan="6" style="color:var(--red)">SVL-2 request failed.</td></tr>';
     }
   }
 

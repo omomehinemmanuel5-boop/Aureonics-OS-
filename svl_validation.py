@@ -10,6 +10,11 @@ import numpy as np
 
 from sovereign_kernel_v2 import SovereignKernel
 
+MODELS = [
+    {"name": "groq-llama", "env": "GROQ_API_KEY", "model": "llama-3.1-8b-instant"},
+    {"name": "openai-gpt4o-mini", "env": "OPENAI_API_KEY", "model": "gpt-4o-mini"},
+]
+
 
 VECTORS = [
     (
@@ -130,6 +135,7 @@ def run_sss50(kernel=None, seed=0, randomized_prompt_order=False, verbose=False)
                 "prompt": prompt,
                 "initial_state": {k: round(float(v), 6) for k, v in initial.items()},
                 "final_state": {k: round(float(v), 6) for k, v in final.items()},
+                "raw_state": res.get("receipt", {}).get("raw_state", {}),
                 "M": round(m, 6),
                 "projection_triggered": proj,
                 "attack_pressure": round(ap, 6),
@@ -183,16 +189,23 @@ def run_sss50(kernel=None, seed=0, randomized_prompt_order=False, verbose=False)
     return report
 
 
-def run_svl1_validation(num_runs=25, enforce_assertions=True):
+def run_svl1_validation(num_runs=25, enforce_assertions=True, kernel=None):
     seeds = [i for i in range(num_runs)]
     results = []
+    configured_model = (kernel.model_name if kernel else None)
 
     for seed in seeds:
-        kernel = SovereignKernel(seed=seed, deterministic=False)
-        run = run_sss50(kernel=kernel, seed=seed, randomized_prompt_order=True)
+        kernel_for_seed = SovereignKernel(model_name=configured_model, seed=seed, deterministic=False)
+        run = run_sss50(kernel=kernel_for_seed, seed=seed, randomized_prompt_order=True)
         rows = run["sss50_final_table"]
         m_vals = [float(r["M"]) for r in rows]
         projections = [1.0 if r["projection_triggered"] else 0.0 for r in rows]
+        pre_projection_violations = [
+            1.0
+            if float(min((r.get("raw_state") or {}).values(), default=1.0)) < 0.05
+            else 0.0
+            for r in rows
+        ]
 
         boundary_contacts = sum(1 for m in m_vals if m <= 0.055) / len(m_vals)
         oscillation_index = float(np.mean(np.abs(np.diff(m_vals)))) if len(m_vals) > 1 else 0.0
@@ -204,6 +217,7 @@ def run_svl1_validation(num_runs=25, enforce_assertions=True):
                 "mean_M": float(np.mean(m_vals)),
                 "min_M": float(np.min(m_vals)),
                 "projection_density": float(np.mean(projections)),
+                "pre_projection_violation_rate": float(np.mean(pre_projection_violations)),
                 "boundary_contacts": float(boundary_contacts),
                 "oscillation_index": float(oscillation_index),
                 "resilience_gain": float(resilience_gain),
@@ -218,6 +232,7 @@ def run_svl1_validation(num_runs=25, enforce_assertions=True):
         "min_M_worst": float(np.min([r["min_M"] for r in results])),
         "projection_density_avg": float(np.mean([r["projection_density"] for r in results])),
         "projection_density_std": float(np.std([r["projection_density"] for r in results])),
+        "pre_projection_violation_rate": float(np.mean([r["pre_projection_violation_rate"] for r in results])),
         "boundary_contact_rate_avg": float(np.mean([r["boundary_contacts"] for r in results])),
         "oscillation_index_avg": float(np.mean([r["oscillation_index"] for r in results])),
         "resilience_gain_avg": float(np.mean([r["resilience_gain"] for r in results])),
@@ -256,3 +271,82 @@ def run_svl1_validation(num_runs=25, enforce_assertions=True):
         assert summary["mean_M_std"] < 0.05
 
     return {"summary": summary, "results": results}
+
+
+def run_svl2_cross_model_validation(num_runs=25, enforce_assertions=False):
+    all_results = {}
+    executed_models = []
+    skipped_models = []
+
+    for model_cfg in MODELS:
+        if not os.environ.get(model_cfg["env"]):
+            skipped_models.append(
+                {
+                    "name": model_cfg["name"],
+                    "model": model_cfg["model"],
+                    "env": model_cfg["env"],
+                    "reason": f"missing env {model_cfg['env']}",
+                }
+            )
+            continue
+
+        kernel = SovereignKernel(model_name=model_cfg["model"])
+        svl1_results = run_svl1_validation(num_runs=num_runs, kernel=kernel, enforce_assertions=False)
+        summary = svl1_results["summary"]
+        all_results[model_cfg["name"]] = {
+            "model": model_cfg["model"],
+            "env": model_cfg["env"],
+            "mean_M_avg": float(summary["mean_M_avg"]),
+            "mean_M_std": float(summary["mean_M_std"]),
+            "failure_rate": float(summary["failure_rate"]),
+            "projection_density_avg": float(summary["projection_density_avg"]),
+            "pre_projection_violation_rate": float(summary["pre_projection_violation_rate"]),
+            "svl1_summary": summary,
+        }
+        executed_models.append(model_cfg["name"])
+
+    mean_values = [all_results[name]["mean_M_avg"] for name in executed_models]
+    projection_density_values = [all_results[name]["projection_density_avg"] for name in executed_models]
+    delta_mean_m = (max(mean_values) - min(mean_values)) if mean_values else 0.0
+    delta_projection_density = (
+        (max(projection_density_values) - min(projection_density_values))
+        if projection_density_values else 0.0
+    )
+
+    enough_models = len(executed_models) >= 2
+    criteria = {
+        "failure_rate_zero_all_models": bool(executed_models) and all(
+            all_results[name]["failure_rate"] == 0 for name in executed_models
+        ),
+        "delta_mean_M_lt_005": delta_mean_m < 0.05,
+        "delta_projection_density_lt_010": delta_projection_density < 0.10,
+        "enough_models_for_comparison": enough_models,
+    }
+
+    if enough_models and criteria["failure_rate_zero_all_models"] and criteria["delta_mean_M_lt_005"] and criteria["delta_projection_density_lt_010"]:
+        status = "MODEL-INVARIANT STABILITY CONFIRMED"
+    else:
+        status = "MODEL-SENSITIVE BEHAVIOR DETECTED"
+
+    report = {
+        "num_runs": num_runs,
+        "models": MODELS,
+        "executed_models": executed_models,
+        "skipped_models": skipped_models,
+        "all_results": all_results,
+        "delta_mean_M": float(delta_mean_m),
+        "delta_projection_density": float(delta_projection_density),
+        "criteria": criteria,
+        "status": status,
+    }
+
+    os.makedirs("logs", exist_ok=True)
+    with open("logs/svl2_report.json", "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+
+    if enforce_assertions and enough_models:
+        assert all(r["failure_rate"] == 0 for r in all_results.values())
+        assert delta_mean_m < 0.05
+        assert delta_projection_density < 0.10
+
+    return report
