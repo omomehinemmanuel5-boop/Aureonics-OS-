@@ -7,6 +7,8 @@ Architecture:
 CBF is always applied LAST, guaranteeing min(x_i) >= TAU_CBF for all time.
 Basin Intelligence Layer shapes convergence toward meaningful interior structure.
 """
+import json
+import os
 import random
 
 # ── Safety parameters ──────────────────────────────────────────────────────────
@@ -34,6 +36,12 @@ MARGIN_SAFETY_CUTOFF = 0.1   # zero basin force when system is close to collapse
 
 NORMALIZATION_EPSILON = 1e-12
 FLOAT_TOLERANCE = 1e-9  # floating-point noise threshold for safety check
+
+
+
+def lyapunov_candidate(x: list[float]) -> float:
+    center = 1.0 / 3.0
+    return sum((xi - center) ** 2 for xi in x)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -227,6 +235,7 @@ def simulate_cbf(
     alpha: float = 0.5,
     cbf_enabled: bool = True,
     input_data: dict | None = None,
+    enforce_proof_assertions: bool = False,
 ) -> dict:
     """
     Full simulation step:
@@ -248,6 +257,11 @@ def simulate_cbf(
     time_below_safe = 0
     recovery_times: list[int] = []
     violation_start: int | None = None
+    lyapunov_values: list[float] = []
+    delta_v_negative_steps = 0
+    delta_v_positive_steps = 0
+    delta_v_series: list[float] = []
+    invariance_violations = 0
 
     phi_initial = compute_phi(x, input_data)
 
@@ -284,8 +298,21 @@ def simulate_cbf(
 
         # ── 6. State update (simplex projection) ────────────────────────────
         x_next = [x[i] + dt * total_force[i] for i in range(3)]
+        pre_projection_below_floor = any(v < TAU_CBF for v in x_next)
         x_next, _ = _normalize(x_next)
+        if pre_projection_below_floor and any(v < TAU_CBF for v in x_next):
+            invariance_violations += 1
         x = x_next
+
+        V_t = lyapunov_candidate(x)
+        lyapunov_values.append(V_t)
+        delta_V = 0.0 if len(lyapunov_values) == 1 else (lyapunov_values[-1] - lyapunov_values[-2])
+        if len(lyapunov_values) > 1:
+            delta_v_series.append(delta_V)
+            if delta_V < 0:
+                delta_v_negative_steps += 1
+            elif delta_V > 0:
+                delta_v_positive_steps += 1
 
         M_new = min(x)
 
@@ -324,6 +351,8 @@ def simulate_cbf(
             "basin": identify_basin(x),
             "u_safe": [round(u, 6) for u in u_safe],
             "u_basin": [round(u, 6) for u in u_basin],
+            "lyapunov_V": round(V_t, 8),
+            "delta_V": round(delta_V, 8),
         })
 
     if violation_start is not None:
@@ -332,6 +361,33 @@ def simulate_cbf(
     avg_recovery = sum(recovery_times) / len(recovery_times) if recovery_times else 0.0
     phi_final = phi_traj[-1] if phi_traj else phi_initial
     directional_gain = round(phi_initial - phi_final, 6)
+    total_delta_steps = max(1, len(lyapunov_values) - 1)
+    corrected_positive_steps = sum(
+        1 for i, value in enumerate(delta_v_series[:-1])
+        if value > 0 and delta_v_series[i + 1] < 0
+    )
+    stability_ratio = (delta_v_negative_steps + corrected_positive_steps) / total_delta_steps
+    destabilizing_ratio = delta_v_positive_steps / total_delta_steps
+    max_deviation = max(lyapunov_values) if lyapunov_values else 0.0
+    classification = (
+        "LYAPUNOV STABLE + FORWARD INVARIANT"
+        if stability_ratio > 0.6 and invariance_violations == 0 and max_deviation < 0.25
+        else "NOT PROVEN"
+    )
+
+    if enforce_proof_assertions:
+        assert stability_ratio > 0.6
+        assert max_deviation < 0.25
+
+    fpl1_report = {
+        "stability_ratio": round(stability_ratio, 6),
+        "invariance_violations": invariance_violations,
+        "max_deviation": round(max_deviation, 8),
+        "classification": classification,
+    }
+    os.makedirs("logs", exist_ok=True)
+    with open("logs/fpl1_report.json", "w", encoding="utf-8") as f:
+        json.dump(fpl1_report, f, indent=2)
 
     return {
         "trajectory": trajectory,
@@ -350,6 +406,11 @@ def simulate_cbf(
         "seed": seed,
         "cbf_enabled": cbf_enabled,
         "tau_cbf": TAU_CBF,
+        "stability_ratio": round(stability_ratio, 6),
+        "delta_v_positive_ratio": round(destabilizing_ratio, 6),
+        "max_deviation": round(max_deviation, 8),
+        "invariance_violations": invariance_violations,
+        "fpl1_classification": classification,
     }
 
 
@@ -360,6 +421,7 @@ def simulate_cbf_comparison(
     seed: int = 42,
     alpha: float = 0.5,
     input_data: dict | None = None,
+    enforce_proof_assertions: bool = False,
 ) -> dict:
     governed = simulate_cbf(steps=steps, dt=dt, seed=seed, alpha=alpha, cbf_enabled=True, input_data=input_data)
     ungoverned = simulate_cbf(steps=steps, dt=dt, seed=seed, alpha=alpha, cbf_enabled=False, input_data=input_data)

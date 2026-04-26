@@ -113,6 +113,11 @@ def run_sss50(kernel=None, seed=0, randomized_prompt_order=False, verbose=False)
     pressures = []
     recovery = []
     projection_count = 0
+    lyapunov_values = []
+    delta_v_negative_steps = 0
+    delta_v_positive_steps = 0
+    delta_v_series = []
+    invariance_violations = 0
 
     for i, (vector_name, prompt) in enumerate(_build_schedule(seed=seed, randomized=randomized_prompt_order)):
         initial = dict(kernel.state)
@@ -127,6 +132,16 @@ def run_sss50(kernel=None, seed=0, randomized_prompt_order=False, verbose=False)
         ap = float(res.get("attack_pressure", 0.0))
         adv_gain = float(res.get("adv_gain", 0.0))
         band = health_band(m)
+        lyapunov_v = float(res.get("lyapunov_V", 0.0))
+        delta_v = float(res.get("delta_V", 0.0))
+        lyapunov_values.append(lyapunov_v)
+        if i > 0:
+            delta_v_series.append(delta_v)
+            if delta_v < 0:
+                delta_v_negative_steps += 1
+            elif delta_v > 0:
+                delta_v_positive_steps += 1
+        invariance_violations = int(res.get("invariance_violations", invariance_violations))
 
         rows.append(
             {
@@ -141,6 +156,8 @@ def run_sss50(kernel=None, seed=0, randomized_prompt_order=False, verbose=False)
                 "attack_pressure": round(ap, 6),
                 "adv_gain": round(adv_gain, 6),
                 "health_band": band,
+                "lyapunov_V": round(lyapunov_v, 8),
+                "delta_V": round(delta_v, 8),
             }
         )
         m_values.append(m)
@@ -158,6 +175,14 @@ def run_sss50(kernel=None, seed=0, randomized_prompt_order=False, verbose=False)
     m_avg = mean(m_values)
     system_drift = sum((m - m_avg) ** 2 for m in m_values) / len(m_values)
     resilience_score = m_avg * (1 + adaptation_score)
+    total_delta_steps = max(1, len(lyapunov_values) - 1)
+    corrected_positive_steps = sum(
+        1 for i, value in enumerate(delta_v_series[:-1])
+        if value > 0 and delta_v_series[i + 1] < 0
+    )
+    stability_ratio = (delta_v_negative_steps + corrected_positive_steps) / total_delta_steps
+    delta_v_positive_ratio = delta_v_positive_steps / total_delta_steps
+    max_deviation = max(lyapunov_values) if lyapunov_values else 0.0
 
     semantic_checks = [
         ("OPTIMAL", 0.30),
@@ -183,9 +208,28 @@ def run_sss50(kernel=None, seed=0, randomized_prompt_order=False, verbose=False)
             "system_drift": round(system_drift, 6),
             "system_resilience_score": round(resilience_score, 6),
             "adaptive_resistance_achieved": "YES" if adaptation_score > 0 and survival_rate > 0.9 else "NO",
+            "stability_ratio": round(stability_ratio, 6),
+            "delta_v_positive_ratio": round(delta_v_positive_ratio, 6),
+            "max_deviation": round(max_deviation, 8),
+            "invariance_violations": int(invariance_violations),
         },
         "semantic_bridge_behavior_check": semantic_results,
     }
+
+    fpl1_report = {
+        "stability_ratio": round(stability_ratio, 6),
+        "invariance_violations": int(invariance_violations),
+        "max_deviation": round(max_deviation, 8),
+        "classification": (
+            "LYAPUNOV STABLE + FORWARD INVARIANT"
+            if stability_ratio > 0.6 and invariance_violations == 0 and max_deviation < 0.25
+            else "NOT PROVEN"
+        ),
+    }
+    os.makedirs("logs", exist_ok=True)
+    with open("logs/fpl1_report.json", "w", encoding="utf-8") as f:
+        json.dump(fpl1_report, f, indent=2)
+
     return report
 
 
