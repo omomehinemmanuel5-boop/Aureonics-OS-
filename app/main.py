@@ -11,81 +11,23 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-logger = logging.getLogger(__name__)
+from app.controllers.cbf_routes import router as cbf_router
+from app.controllers.routes import router
+from app.controllers.simulation_routes import router as simulation_router
+from app.core_lock import AUREONICS_CORE_VERSION, assert_core_lock
+from app.database import Base, engine
+from app.services.lex_response import _semantic_diff_score
+from sovereign_kernel_v2 import SovereignKernel
+from svl_validation import run_apl1_ablation, run_cpl1_validation, run_svl1_validation, run_svl2_cross_model_validation
 
+Base.metadata.create_all(bind=engine)
+print(f"AUREONICS CORE VERSION: {AUREONICS_CORE_VERSION}")
+try:
+    assert_core_lock()
+except AssertionError as exc:
+    print(f"CORE LOCK WARNING: {exc}")
 
-def _ensure_runtime_state() -> None:
-    if not hasattr(app.state, "startup_errors"):
-        app.state.startup_errors = []
-    if not hasattr(app.state, "core_version"):
-        app.state.core_version = None
-    if not hasattr(app.state, "kernel"):
-        app.state.kernel = None
-    if not hasattr(app.state, "kernel_api_key_env"):
-        app.state.kernel_api_key_env = ""
-    if not hasattr(app.state, "kernel_model_name"):
-        app.state.kernel_model_name = ""
-    if not hasattr(app.state, "routers_loaded"):
-        app.state.routers_loaded = False
-
-
-def _record_startup_error(message: str) -> None:
-    _ensure_runtime_state()
-    app.state.startup_errors.append(message)
-    logger.warning(message)
-
-
-def _load_runtime_dependencies() -> None:
-    _ensure_runtime_state()
-    app.state.startup_errors = []
-
-    # Keep optional governance stack from blocking uvicorn startup.
-    try:
-        database_mod = importlib.import_module("app.database")
-        database_mod.Base.metadata.create_all(bind=database_mod.engine)
-    except Exception as exc:
-        _record_startup_error(f"database init failed: {exc}")
-
-    try:
-        core_lock_mod = importlib.import_module("app.core_lock")
-        app.state.core_version = getattr(core_lock_mod, "AUREONICS_CORE_VERSION", None)
-        try:
-            core_lock_mod.assert_core_lock()
-        except Exception as lock_exc:
-            _record_startup_error(f"core lock warning: {lock_exc}")
-    except Exception as exc:
-        _record_startup_error(f"core lock module unavailable: {exc}")
-
-    try:
-        kernel_mod = importlib.import_module("sovereign_kernel_v2")
-        kernel = kernel_mod.SovereignKernel()
-        app.state.kernel = kernel
-        app.state.kernel_api_key_env = getattr(kernel, "api_key_env", "")
-        app.state.kernel_model_name = getattr(kernel, "model_name", "")
-    except Exception as exc:
-        _record_startup_error(f"kernel init failed: {exc}")
-
-    if not app.state.routers_loaded:
-        for module_name, attr_name in (
-            ("app.controllers.routes", "router"),
-            ("app.controllers.simulation_routes", "router"),
-            ("app.controllers.cbf_routes", "router"),
-        ):
-            try:
-                module = importlib.import_module(module_name)
-                app.include_router(getattr(module, attr_name))
-            except Exception as exc:
-                _record_startup_error(f"router load failed ({module_name}): {exc}")
-        app.state.routers_loaded = True
-
-
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    _load_runtime_dependencies()
-    yield
-
-
-app = FastAPI(title="Aureonics Governor Engine", lifespan=lifespan)
+app = FastAPI(title="Aureonics Governor Engine")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -93,6 +35,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+kernel = SovereignKernel()
+LEX_PRO_MODE = os.getenv("LEX_PRO_MODE", "false").lower() == "true"
+request_count = 0
 
 
 class PraxisRunRequest(BaseModel):
@@ -177,12 +122,24 @@ def _get_kernel():
 
 
 def _run_governed_turn(payload: PraxisRunRequest) -> dict:
-    kernel = _get_kernel()
+    global request_count
+    request_count += 1
+    print(f"lex_run_request_count={request_count}")
     bridge_enabled = kernel.semantic_bridge_enabled if payload.bridge is None else bool(payload.bridge)
     result = kernel.run_cycle(payload.prompt, bridge_enabled=bridge_enabled)
 
     if result.get("status") != "Success":
-        raise HTTPException(status_code=503, detail="LLM service unavailable")
+        fallback_raw = "LLM service temporarily unavailable."
+        fallback_governed = "Lex Aureon fallback response: service is temporarily unavailable, please retry shortly."
+        return _to_lex_response(
+            fallback_raw,
+            fallback_governed,
+            fallback_governed,
+            True,
+            "Fallback path activated due to upstream LLM failure.",
+            result.get("M", min(kernel.state.values())),
+            _semantic_diff_score(fallback_raw, fallback_governed),
+        )
 
     raw_output = result.get("raw_output", "")
     governed_output = result.get("governed_output", "")
@@ -197,7 +154,13 @@ def _run_governed_turn(payload: PraxisRunRequest) -> dict:
     )
     final_output = governed_output
     diff = _semantic_diff_score(raw_output, governed_output)
-    return _to_lex_response(raw_output, governed_output, final_output, intervention, reason, result.get("M", 0.0), diff)
+    response = _to_lex_response(raw_output, governed_output, final_output, intervention, reason, result.get("M", 0.0), diff)
+    if not LEX_PRO_MODE:
+        response["raw_output"] = response["raw_output"][:280]
+        response["governed_output"] = response["governed_output"][:280]
+        response["final_output"] = response["final_output"][:280]
+        response["intervention_reason"] = "Free mode: concise explanation."
+    return response
 
 
 @app.get("/", include_in_schema=False)
