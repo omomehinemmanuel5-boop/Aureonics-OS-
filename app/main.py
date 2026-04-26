@@ -14,6 +14,7 @@ from app.controllers.routes import router
 from app.controllers.simulation_routes import router as simulation_router
 from app.core_lock import AUREONICS_CORE_VERSION, assert_core_lock
 from app.database import Base, engine
+from app.services.lex_response import from_kernel_result, to_lex_response
 from sovereign_kernel_v2 import SovereignKernel
 from svl_validation import run_apl1_ablation, run_cpl1_validation, run_svl1_validation, run_svl2_cross_model_validation
 
@@ -34,7 +35,6 @@ app.add_middleware(
 app.include_router(router)
 app.include_router(simulation_router)
 app.include_router(cbf_router)
-
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 kernel = SovereignKernel()
 
@@ -55,14 +55,8 @@ class LexRunResponse(BaseModel):
     semantic_diff_score: float
 
 
-def _semantic_diff_score(raw_output: str, governed_output: str) -> float:
-    raw_words = set((raw_output or "").lower().split())
-    governed_words = set((governed_output or "").lower().split())
-    union_words = raw_words | governed_words
-    if not union_words:
-        return 0.0
-    overlap = len(raw_words & governed_words) / len(union_words)
-    return round(float(1.0 - overlap), 6)
+def _is_dev_mode() -> bool:
+    return os.environ.get("APP_ENV", "production").lower() in {"dev", "development", "local"}
 
 
 def _to_lex_response(raw: str, governed: str, final: str, intervention: bool, reason: str, M: float, diff: float) -> dict:
