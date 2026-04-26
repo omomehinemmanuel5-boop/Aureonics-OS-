@@ -775,6 +775,17 @@
           </table>
         </div>
       </div>
+      <div class="chart-card" style="margin-top:12px">
+        <div class="chart-title">COUPLING ANALYSIS</div>
+        <div class="chart-sub">CPL-1 causal coupling validation (semantic input → state shift → projection output).</div>
+        <button class="btn btn-secondary" style="max-width:280px" onclick="runCPL1()">Run CPL-1 Validation</button>
+        <div class="flag-row">
+          <span class="flag-chip" id="cplCorrSemanticState">corr_semantic_state: —</span>
+          <span class="flag-chip" id="cplCorrStateProjection">corr_state_projection: —</span>
+          <span class="flag-chip" id="cplProjectionDensity">projection_density: —</span>
+          <span class="flag-chip" id="cplClassification">classification: —</span>
+        </div>
+      </div>
     </div>
 
     <!-- Safety Monitor -->
@@ -1547,6 +1558,28 @@
       deltaMeanEl.textContent = 'Δ mean_M: failed';
       classEl.textContent = `Final classification: error (${e})`;
       tableBody.innerHTML = '<tr><td colspan="6" style="color:var(--red)">SVL-2 request failed.</td></tr>';
+    }
+  }
+
+  async function runCPL1() {
+    const semanticEl = el('cplCorrSemanticState');
+    const stateProjEl = el('cplCorrStateProjection');
+    const densityEl = el('cplProjectionDensity');
+    const classEl = el('cplClassification');
+    semanticEl.textContent = 'corr_semantic_state: running…';
+    stateProjEl.textContent = 'corr_state_projection: —';
+    densityEl.textContent = 'projection_density: —';
+    classEl.textContent = 'classification: —';
+    try {
+      const res = await fetch('/praxis/cpl1', { method: 'POST' });
+      const data = await res.json();
+      semanticEl.textContent = `corr_semantic_state: ${Number(data.corr_semantic_state || 0).toFixed(4)}`;
+      stateProjEl.textContent = `corr_state_projection: ${Number(data.corr_state_projection || 0).toFixed(4)}`;
+      densityEl.textContent = `projection_density: ${Number(data.projection_density || 0).toFixed(4)}`;
+      classEl.textContent = `classification: ${data.classification || 'UNKNOWN'}`;
+    } catch (e) {
+      semanticEl.textContent = 'corr_semantic_state: failed';
+      classEl.textContent = `classification: error (${e})`;
     }
   }
 
