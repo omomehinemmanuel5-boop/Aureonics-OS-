@@ -67,6 +67,13 @@ class SovereignKernel:
         self.api_key = os.environ.get(self.api_key_env, "")
         os.makedirs(os.path.dirname(self.trace_log_path), exist_ok=True)
 
+    def _is_dev_mode(self):
+        return os.environ.get("APP_ENV", "production").lower() in {"dev", "development", "local"}
+
+    def _safe_log(self, message):
+        if self._is_dev_mode():
+            print(message)
+
     def assert_governor_consistency(self):
         assert abs(self.state["C"] + self.state["R"] + self.state["S"] - 1.0) < 1e-6
 
@@ -328,9 +335,9 @@ class SovereignKernel:
         # Step 1: Debug logging
         has_key = bool(api_key)
         key_preview = api_key[:6] if api_key else ""
-        print(f"[LLM DEBUG] has_key={has_key}")
-        print(f"[LLM DEBUG] key_prefix={key_preview}")
-        print(f"[LLM DEBUG] endpoint={endpoint}")
+        self._safe_log(f"[LLM DEBUG] has_key={has_key}")
+        self._safe_log(f"[LLM DEBUG] key_prefix={key_preview}")
+        self._safe_log(f"[LLM DEBUG] endpoint={endpoint}")
 
         if not api_key:
             raise Exception(f"{model_cfg['env']} is not set. Export {model_cfg['env']} before calling /praxis/run.")
@@ -410,7 +417,7 @@ class SovereignKernel:
         # Print warning if ADV gain < epsilon (0.005)
         epsilon = 0.005
         if adv_delta < epsilon:
-            print(f"[ADV WARNING] Low entropy ({adv_delta:.4f}). Response may be echoing prompt.")
+            self._safe_log(f"[ADV WARNING] Low entropy ({adv_delta:.4f}). Response may be echoing prompt.")
             
         return adv_delta
 
@@ -562,8 +569,8 @@ class SovereignKernel:
     # Main Cycle
     def run_cycle(self, user_prompt, bridge_enabled=True):
         self.step_counter += 1
-        print(f"\n{'-'*60}")
-        print(f"[KERNEL] Prompt: {user_prompt[:80]}")
+        self._safe_log(f"\n{'-'*60}")
+        self._safe_log("[KERNEL] Prompt received")
         prev_state = self.prev_state if hasattr(self, "prev_state") else self.state.copy()
 
         # 1) load state and adaptive pressure
@@ -586,10 +593,10 @@ class SovereignKernel:
         for key in delta:
             delta[key] *= dynamics_gain
         self.assert_governor_consistency()
-        print(f"[SPAN 1] Delta: {delta}")
+        self._safe_log(f"[SPAN 1] Delta: {delta}")
 
         is_safe, message = self.check_stability(delta)
-        print(f"[SPAN 2] Gate: {message}")
+        self._safe_log(f"[SPAN 2] Gate: {message}")
 
         context, temperature, health_band = self._build_contract_context(M, bridge_enabled=bridge_enabled)
         if self.deterministic:
@@ -612,10 +619,10 @@ class SovereignKernel:
         except Exception as e:
             return {"status": "Error", "reason": str(e), "state": self.state}
 
-        print(f"[SPAN 2b] RAW: {len(raw_response.split())} words | GOV: {len(governed_response.split())} words")
+        self._safe_log(f"[SPAN 2b] RAW: {len(raw_response.split())} words | GOV: {len(governed_response.split())} words")
 
         adv_gain = self.score_adv(governed_response)
-        print(f"[SPAN 3] ADV gain: {adv_gain:.4f}")
+        self._safe_log(f"[SPAN 3] ADV gain: {adv_gain:.4f}")
 
         # 1) input dynamics
         delta_by_state = {"C": delta["dc"], "R": delta["dr"], "S": delta["ds"]}
@@ -666,9 +673,9 @@ class SovereignKernel:
             self.state["S"] += 0.30
 
         raw_state = {k: float(v) for k, v in self.state.items()}
-        print("RAW STATE:", raw_state)
+        self._safe_log(f"RAW STATE: {raw_state}")
         if min(raw_state.values()) < 0.06:
-            print("⚠️ Near boundary — projection should trigger")
+            self._safe_log("⚠️ Near boundary — projection should trigger")
         pre_projection_below_floor = any(v < 0.05 for v in raw_state.values())
 
         # 5) CBF projection (single enforcement point)
@@ -679,7 +686,7 @@ class SovereignKernel:
             safety_projection_triggered = False
         self.assert_governor_consistency()
         projected_state = {k: float(v) for k, v in self.state.items()}
-        print("PROJECTED STATE:", self.state)
+        self._safe_log(f"PROJECTED STATE: {self.state}")
         if pre_projection_below_floor:
             if self.cbf_enabled:
                 if any(v < 0.05 for v in projected_state.values()):
@@ -690,7 +697,7 @@ class SovereignKernel:
             sum((raw_state[k] - projected_state[k]) ** 2 for k in ["C", "R", "S"])
         )
         if safety_projection_triggered:
-            print(f"[SAFETY] Simplex projection applied. State: {self.state}")
+            self._safe_log(f"[SAFETY] Simplex projection applied. State: {self.state}")
 
         # Critical invariant guard.
         if abs(sum(self.state.values()) - 1.0) > 1e-6 or min(self.state.values()) < 0.05:
@@ -701,7 +708,7 @@ class SovereignKernel:
                 guard_projection_triggered = False
             safety_projection_triggered = safety_projection_triggered or guard_projection_triggered
             self.assert_governor_consistency()
-            print("[GUARD] Invariant drift detected, projection re-applied.")
+            self._safe_log("[GUARD] Invariant drift detected, projection re-applied.")
 
         lyapunov_V = self.lyapunov_candidate(projected_state)
         delta_V = lyapunov_V - float(self.prev_lyapunov_V)
@@ -731,7 +738,9 @@ class SovereignKernel:
             effective_theta=effective_theta,
             health_band=health_band,
         )
-        print(f"[SPAN 4] Receipt filed. M={receipt['stability_margin']} | Constit: {receipt['constitutional']}")
+        print(
+            f"[KERNEL] timestamp={receipt['timestamp_iso']} M={receipt['stability_margin']} intervention={raw_response.strip() != governed_response.strip()}"
+        )
 
         receipt["safety_projection_triggered"] = safety_projection_triggered
         receipt["theta"] = round(float(self.theta), 6)
