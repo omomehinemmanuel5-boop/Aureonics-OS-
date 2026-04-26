@@ -22,6 +22,18 @@ NEAR_ZERO_EPSILON = 0.01
 NEAR_ZERO_THRESHOLD = 0.02
 
 
+EQUILIBRIUM_CENTER = 1.0 / 3.0
+
+
+def lyapunov_candidate(state: list[float]) -> float:
+    c, r, sec = state
+    return (
+        (c - EQUILIBRIUM_CENTER) ** 2
+        + (r - EQUILIBRIUM_CENTER) ** 2
+        + (sec - EQUILIBRIUM_CENTER) ** 2
+    )
+
+
 def seed_project(db: Session) -> Project:
     project = db.get(Project, "sim-project")
     if project:
@@ -131,6 +143,12 @@ def simulate_mode(
     near_collapse_count = 0
     non_physical_state_count = 0
     normalization_fallback_count = 0
+    lyapunov_values: list[float] = []
+    negative_delta_steps = 0
+    positive_delta_steps = 0
+    delta_v_series: list[float] = []
+    total_delta_steps = 0
+    invariance_violations = 0
 
     for t in range(steps):
         if symmetry_test:
@@ -158,6 +176,22 @@ def simulate_mode(
             normalization_fallback_count += 1
             collapse_detected = True
 
+        pre_projection_state = list(x)
+        if any(value < 0.05 for value in pre_projection_state):
+            projected_state, _ = apply_safe_normalization([max(0.05, value) for value in pre_projection_state])
+            if any(value < 0.05 for value in projected_state):
+                invariance_violations += 1
+        V = lyapunov_candidate(x)
+        lyapunov_values.append(V)
+        delta_V = 0.0 if len(lyapunov_values) == 1 else (lyapunov_values[-1] - lyapunov_values[-2])
+        if len(lyapunov_values) > 1:
+            delta_v_series.append(delta_V)
+            total_delta_steps += 1
+            if delta_V < 0:
+                negative_delta_steps += 1
+            elif delta_V > 0:
+                positive_delta_steps += 1
+
         M = min(x)
         is_below = M < tau
         if is_below:
@@ -181,6 +215,8 @@ def simulate_mode(
                 "R": x[1],
                 "S": x[2],
                 "M": M,
+                "lyapunov_V": V,
+                "delta_V": delta_V,
             }
         )
 
@@ -192,6 +228,17 @@ def simulate_mode(
     mean_s = sum(step["S"] for step in trajectory) / len(trajectory) if trajectory else 0.0
     if violation_start is not None:
         recovery_times.append(steps - violation_start)
+
+    corrected_positive_steps = sum(
+        1 for i, value in enumerate(delta_v_series[:-1])
+        if value > 0 and delta_v_series[i + 1] < 0
+    )
+    stability_ratio = ((negative_delta_steps + corrected_positive_steps) / total_delta_steps) if total_delta_steps else 1.0
+    max_deviation = max(lyapunov_values) if lyapunov_values else 0.0
+    destabilizing_ratio = (positive_delta_steps / total_delta_steps) if total_delta_steps else 0.0
+    boundedness_holds = max_deviation < 0.25
+    stability_holds = stability_ratio > 0.6
+    forward_invariant = invariance_violations == 0
 
     return {
         "trajectory": trajectory,
@@ -216,6 +263,14 @@ def simulate_mode(
         "non_physical_state_count": non_physical_state_count,
         "integration_anomaly_detected": non_physical_state_count > 0,
         "normalization_fallback_count": normalization_fallback_count,
+        "stability_ratio": stability_ratio,
+        "delta_v_negative_ratio": stability_ratio,
+        "delta_v_positive_ratio": destabilizing_ratio,
+        "max_deviation": max_deviation,
+        "invariance_violations": invariance_violations,
+        "lyapunov_stability_assertion_passed": stability_holds,
+        "boundedness_assertion_passed": boundedness_holds,
+        "forward_invariance_assertion_passed": forward_invariant,
     }
 
 
@@ -302,6 +357,12 @@ def simulate_adaptive_mode(
     violation_start: int | None = None
     collapse_detected = False
     normalization_fallback_count = 0
+    lyapunov_values: list[float] = []
+    negative_delta_steps = 0
+    positive_delta_steps = 0
+    delta_v_series: list[float] = []
+    total_delta_steps = 0
+    invariance_violations = 0
 
     for t in range(steps):
         z = {
@@ -358,6 +419,17 @@ def simulate_adaptive_mode(
     m_values = [step["M"] for step in trajectory]
     min_m = min(m_values) if m_values else 0.0
     avg_recovery_time = (sum(recovery_times) / len(recovery_times)) if recovery_times else 0.0
+
+    corrected_positive_steps = sum(
+        1 for i, value in enumerate(delta_v_series[:-1])
+        if value > 0 and delta_v_series[i + 1] < 0
+    )
+    stability_ratio = ((negative_delta_steps + corrected_positive_steps) / total_delta_steps) if total_delta_steps else 1.0
+    max_deviation = max(lyapunov_values) if lyapunov_values else 0.0
+    destabilizing_ratio = (positive_delta_steps / total_delta_steps) if total_delta_steps else 0.0
+    boundedness_holds = max_deviation < 0.25
+    stability_holds = stability_ratio > 0.6
+    forward_invariant = invariance_violations == 0
 
     return {
         "trajectory": trajectory,

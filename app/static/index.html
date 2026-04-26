@@ -698,6 +698,21 @@
           <div class="value val-muted" id="statGuarantee">—</div>
           <div class="sub">QP discrete-time</div>
         </div>
+        <div class="stat-card">
+          <div class="label">ΔV Stability Ratio</div>
+          <div class="value val-muted" id="statStabilityRatio">—</div>
+          <div class="sub">fraction of steps with ΔV &lt; 0</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Max Deviation</div>
+          <div class="value val-muted" id="statMaxDeviation">—</div>
+          <div class="sub">max V(t), bounded if &lt; 0.25</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Forward Invariance</div>
+          <div class="value val-muted" id="statInvariance">—</div>
+          <div class="sub">projection violations (target 0)</div>
+        </div>
       </div>
     </div>
 
@@ -767,6 +782,12 @@
           <div class="chart-title">Potential Φ(t)</div>
           <div class="chart-sub">Lower = better constitutional coherence · descent guard prevents Φ from rising</div>
           <canvas id="phiChart" height="70"></canvas>
+        </div>
+
+        <div class="chart-card wide">
+          <div class="chart-title">STABILITY PROOF METRICS — Lyapunov V(t)</div>
+          <div class="chart-sub">V(t)=(C−1/3)^2+(R−1/3)^2+(S−1/3)^2 and ΔV trend over time.</div>
+          <canvas id="lyapunovChart" height="70"></canvas>
         </div>
 
         <div class="chart-card wide">
@@ -1284,6 +1305,11 @@
       { label: 'Φ(t)', data: toXY(pt), borderColor: '#f0883e', borderWidth: 1.5 }
     ], 'Φ', pMin - pad, pMax + pad);
 
+    makeChart('lyapunovChart', [
+      { label: 'V(t)', data: toXY(traj.map(d => d.lyapunov_V || 0)), borderColor: '#ff7b72', borderWidth: 2 },
+      { label: 'ΔV(t)', data: toXY(traj.map(d => d.delta_V || 0)), borderColor: '#8b949e', borderWidth: 1.4 }
+    ], 'Lyapunov');
+
     const safe = !data.safety_violated;
     setStat('statMinM', data.min_M.toFixed(5), safe ? 'val-green' : 'val-red');
     setStat('statTheta', data.theta_trajectory[data.theta_trajectory.length - 1].toFixed(3), 'val-purple');
@@ -1292,6 +1318,9 @@
     setStat('statViolations', data.time_below_safe, data.time_below_safe === 0 ? 'val-green' : 'val-red');
     setStat('statRecovery', data.time_below_safe === 0 ? '—' : data.avg_recovery_time.toFixed(2), 'val-blue');
     setStat('statGuarantee', safe ? 'HOLDS' : 'BROKEN', safe ? 'val-green' : 'val-red');
+    setStat('statStabilityRatio', (data.stability_ratio * 100).toFixed(1) + '%', data.stability_ratio > 0.6 ? 'val-green' : 'val-red');
+    setStat('statMaxDeviation', data.max_deviation.toFixed(6), data.max_deviation < 0.25 ? 'val-green' : 'val-red');
+    setStat('statInvariance', data.invariance_violations === 0 ? 'PASS (0)' : `FAIL (${data.invariance_violations})`, data.invariance_violations === 0 ? 'val-green' : 'val-red');
 
     setStat('statPhiInit',   data.phi_initial.toFixed(4), 'val-muted');
     setStat('statPhiFinal',  data.phi_final.toFixed(4),   'val-muted');

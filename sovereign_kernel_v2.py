@@ -36,6 +36,12 @@ class SovereignKernel:
         self.fixed_temperature = 0.4
         self.trace_log_path = trace_log_path
         self.step_counter = 0
+        self.prev_lyapunov_V = self.lyapunov_candidate(self.state)
+        self.delta_v_negative_steps = 0
+        self.delta_v_positive_steps = 0
+        self.delta_v_total_steps = 0
+        self.invariance_violations = 0
+        self.max_deviation = self.prev_lyapunov_V
 
         # Groq runtime config (single provider path only).
         self.api_key = os.environ.get("GROQ_API_KEY", "")
@@ -45,6 +51,15 @@ class SovereignKernel:
 
     def assert_governor_consistency(self):
         assert abs(self.state["C"] + self.state["R"] + self.state["S"] - 1.0) < 1e-6
+
+    def lyapunov_candidate(self, state=None):
+        state = state or self.state
+        center = 1.0 / 3.0
+        return (
+            (float(state["C"]) - center) ** 2
+            + (float(state["R"]) - center) ** 2
+            + (float(state["S"]) - center) ** 2
+        )
 
     def log_trace_step(
         self,
@@ -57,6 +72,10 @@ class SovereignKernel:
         semantic_bridge,
         raw_output,
         governed_output,
+        lyapunov_V,
+        delta_V,
+        stability_ratio,
+        invariance_status,
     ):
         trace_row = {
             "step": int(step),
@@ -64,6 +83,10 @@ class SovereignKernel:
             "R": round(float(self.state["R"]), 6),
             "S": round(float(self.state["S"]), 6),
             "M": round(float(m), 6),
+            "lyapunov_V": round(float(lyapunov_V), 8),
+            "delta_V": round(float(delta_V), 8),
+            "stability_ratio": round(float(stability_ratio), 6),
+            "forward_invariance_ok": bool(invariance_status),
             "attack_pressure": round(float(attack_pressure), 6),
             "effective_theta": round(float(effective_theta), 6),
             "epsilon_injected": bool(epsilon_injected),
@@ -598,12 +621,15 @@ class SovereignKernel:
 
         raw_state = {k: float(v) for k, v in self.state.items()}
         print("RAW STATE:", raw_state)
+        pre_projection_below_floor = any(v < 0.05 for v in raw_state.values())
 
         # 5) CBF projection (single enforcement point)
         safety_projection_triggered = self.project_to_simplex()
         self.assert_governor_consistency()
         projected_state = {k: float(v) for k, v in self.state.items()}
         print("PROJECTED STATE:", self.state)
+        if pre_projection_below_floor and any(v < 0.05 for v in projected_state.values()):
+            self.invariance_violations += 1
         projection_magnitude = math.sqrt(
             sum((raw_state[k] - projected_state[k]) ** 2 for k in ["C", "R", "S"])
         )
@@ -616,6 +642,18 @@ class SovereignKernel:
             safety_projection_triggered = safety_projection_triggered or guard_projection_triggered
             self.assert_governor_consistency()
             print("[GUARD] Invariant drift detected, projection re-applied.")
+
+        lyapunov_V = self.lyapunov_candidate(projected_state)
+        delta_V = lyapunov_V - float(self.prev_lyapunov_V)
+        self.delta_v_total_steps += 1
+        if delta_V < 0:
+            self.delta_v_negative_steps += 1
+        elif delta_V > 0:
+            self.delta_v_positive_steps += 1
+        self.prev_lyapunov_V = lyapunov_V
+        self.max_deviation = max(self.max_deviation, lyapunov_V)
+        stability_ratio = self.delta_v_negative_steps / max(1, self.delta_v_total_steps)
+        forward_invariance_ok = self.invariance_violations == 0
 
         # 6) persist
         receipt = self.settle(
@@ -640,6 +678,12 @@ class SovereignKernel:
         receipt["effective_theta"] = round(float(effective_theta), 6)
         receipt["attack_pressure"] = round(float(self.attack_pressure), 6)
         receipt["semantic_signal"] = semantic_signal
+        receipt["lyapunov_V"] = round(float(lyapunov_V), 8)
+        receipt["delta_V"] = round(float(delta_V), 8)
+        receipt["stability_ratio"] = round(float(stability_ratio), 6)
+        receipt["delta_v_positive_ratio"] = round(float(self.delta_v_positive_steps / max(1, self.delta_v_total_steps)), 6)
+        receipt["max_deviation"] = round(float(self.max_deviation), 8)
+        receipt["invariance_violations"] = int(self.invariance_violations)
         trace_entry = self.log_trace_step(
             step=self.step_counter,
             m=min(self.state["C"], self.state["R"], self.state["S"]),
@@ -650,6 +694,10 @@ class SovereignKernel:
             semantic_bridge=bridge_enabled,
             raw_output=raw_response,
             governed_output=governed_response,
+            lyapunov_V=lyapunov_V,
+            delta_V=delta_V,
+            stability_ratio=stability_ratio,
+            invariance_status=forward_invariance_ok,
         )
         receipt["trace"] = trace_entry
 
@@ -673,6 +721,11 @@ class SovereignKernel:
             "health_band": health_band,
             "semantic_signal": semantic_signal,
             "projection_magnitude": projection_magnitude,
+            "lyapunov_V": round(float(lyapunov_V), 8),
+            "delta_V": round(float(delta_V), 8),
+            "stability_ratio": round(float(stability_ratio), 6),
+            "max_deviation": round(float(self.max_deviation), 8),
+            "invariance_violations": int(self.invariance_violations),
             "receipt": receipt,
         }
 
