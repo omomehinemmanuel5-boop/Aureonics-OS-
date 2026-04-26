@@ -54,7 +54,7 @@ def wait_until_ready(base_url, retries=40, delay=0.5):
             time.sleep(delay)
     raise RuntimeError("Server did not become ready in time")
 
-
+mk
 def run_one(base_url, step, vector, prompt, bridge):
     data = post_json(base_url, "/praxis/run", {"prompt": prompt, "bridge": bridge})
     semantic_state = data.get("semantic_state", {})

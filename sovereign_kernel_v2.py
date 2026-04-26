@@ -3,19 +3,35 @@ import json
 import time
 import math
 import os
+import random
 import sqlite3
 import urllib.request
 import urllib.error
-import random
+import numpy as np
+
+DEFAULT_MODEL = "llama-3.1-8b-instant"
+MODEL_PROVIDER_CONFIG = {
+    "llama-3.1-8b-instant": {
+        "provider": "groq",
+        "env": "GROQ_API_KEY",
+        "endpoint": "https://api.groq.com/openai/v1/chat/completions",
+    },
+    "gpt-4o-mini": {
+        "provider": "openai",
+        "env": "OPENAI_API_KEY",
+        "endpoint": "https://api.openai.com/v1/chat/completions",
+    },
+}
 
 class SovereignKernel:
-    def __init__(self, seed=0, deterministic=True):
+    def __init__(self, model_name=None, seed=42, deterministic=True, trace_log_path="logs/sss50_trace.jsonl"):
         # The Aureonic Triad State
         self.state = {"C": 0.33, "R": 0.33, "S": 0.34}
         self.tau = 0.05                 # Constitutional floor
         self.soft_floor = 0.08          # pre-emptive suspension barrier
         self.soft_gain = 0.5            # pull strength toward the soft floor
         self.dynamic_soft_gain_enabled = True
+        self.cbf_enabled = True
         self.tau_gov = 0.22             # pre-floor intervention threshold
         self.target_margin = 0.24       # governor seeks interior stability
         self.history = []
@@ -28,14 +44,78 @@ class SovereignKernel:
         self.attack_pressure = 0.0
         self.last_semantic_signal = {"attack_type": "none", "severity": 0.0}
         self.semantic_bridge_enabled = True
-        self.seed = int(seed)
+        self.seed = seed or 42
+        random.seed(self.seed)
+        np.random.seed(self.seed)
         self.deterministic = bool(deterministic)
-        self.rng = random.Random(self.seed)
+        self.fixed_temperature = 0.4
+        self.trace_log_path = trace_log_path
+        self.step_counter = 0
+        self.prev_lyapunov_V = self.lyapunov_candidate(self.state)
+        self.delta_v_negative_steps = 0
+        self.delta_v_positive_steps = 0
+        self.delta_v_total_steps = 0
+        self.invariance_violations = 0
+        self.max_deviation = self.prev_lyapunov_V
 
-        # Groq runtime config (single provider path only).
-        self.api_key = os.environ.get("GROQ_API_KEY", "")
-        self.model = "llama-3.1-8b-instant"
-        self.endpoint = "https://api.groq.com/openai/v1/chat/completions"
+        # Runtime model/provider config.
+        self.model_name = model_name or DEFAULT_MODEL
+        model_cfg = MODEL_PROVIDER_CONFIG.get(self.model_name, MODEL_PROVIDER_CONFIG[DEFAULT_MODEL])
+        self.model = self.model_name
+        self.endpoint = model_cfg["endpoint"]
+        self.api_key_env = model_cfg["env"]
+        self.api_key = os.environ.get(self.api_key_env, "")
+        os.makedirs(os.path.dirname(self.trace_log_path), exist_ok=True)
+
+    def assert_governor_consistency(self):
+        assert abs(self.state["C"] + self.state["R"] + self.state["S"] - 1.0) < 1e-6
+
+    def lyapunov_candidate(self, state=None):
+        state = state or self.state
+        center = 1.0 / 3.0
+        return (
+            (float(state["C"]) - center) ** 2
+            + (float(state["R"]) - center) ** 2
+            + (float(state["S"]) - center) ** 2
+        )
+
+    def log_trace_step(
+        self,
+        step,
+        m,
+        attack_pressure,
+        effective_theta,
+        epsilon_injected,
+        projection_triggered,
+        semantic_bridge,
+        raw_output,
+        governed_output,
+        lyapunov_V,
+        delta_V,
+        stability_ratio,
+        invariance_status,
+    ):
+        trace_row = {
+            "step": int(step),
+            "C": round(float(self.state["C"]), 6),
+            "R": round(float(self.state["R"]), 6),
+            "S": round(float(self.state["S"]), 6),
+            "M": round(float(m), 6),
+            "lyapunov_V": round(float(lyapunov_V), 8),
+            "delta_V": round(float(delta_V), 8),
+            "stability_ratio": round(float(stability_ratio), 6),
+            "forward_invariance_ok": bool(invariance_status),
+            "attack_pressure": round(float(attack_pressure), 6),
+            "effective_theta": round(float(effective_theta), 6),
+            "epsilon_injected": bool(epsilon_injected),
+            "projection_triggered": bool(projection_triggered),
+            "semantic_bridge": bool(semantic_bridge),
+            "raw_output_hash": hashlib.sha256(raw_output.encode("utf-8")).hexdigest(),
+            "governed_output_hash": hashlib.sha256(governed_output.encode("utf-8")).hexdigest(),
+        }
+        with open(self.trace_log_path, "a", encoding="utf-8") as trace_file:
+            trace_file.write(json.dumps(trace_row) + "\n")
+        return trace_row
 
     def project_to_simplex(self):
         """
@@ -74,7 +154,9 @@ class SovereignKernel:
 
         # Step 5: Write back to state
         for i, k in enumerate(keys):
-            self.state[k] = round(x_proj[i], 6)
+            self.state[k] = float(x_proj[i])
+        # Explicit correction for floating point residue.
+        self.state["S"] = 1.0 - self.state["C"] - self.state["R"]
 
         return any(abs(self.state[k] - original[k]) > 1e-9 for k in keys)
 
@@ -123,7 +205,8 @@ class SovereignKernel:
         else:
             values = [v / total for v in values]
         for i, k in enumerate(keys):
-            self.state[k] = round(values[i], 6)
+            self.state[k] = float(values[i])
+        self.state["S"] = 1.0 - self.state["C"] - self.state["R"]
 
     def governor_update(self, effective_theta):
         x = [self.state["C"], self.state["R"], self.state["S"]]
@@ -227,11 +310,12 @@ class SovereignKernel:
     # TASK A: Wire in Groq free API
     def call_llm(self, prompt, sovereign_context="", temperature=0.7, return_raw=False):
         """
-        Groq API call using urllib.request only.
+        OpenAI-compatible provider call using urllib.request only.
         """
-        endpoint = "https://api.groq.com/openai/v1/chat/completions"
-        model = "llama-3.1-8b-instant"
-        api_key = os.environ.get("GROQ_API_KEY", "")
+        model_cfg = MODEL_PROVIDER_CONFIG.get(self.model_name, MODEL_PROVIDER_CONFIG[DEFAULT_MODEL])
+        endpoint = model_cfg["endpoint"]
+        model = self.model_name
+        api_key = os.environ.get(model_cfg["env"], "")
 
         # Step 1: Debug logging
         has_key = bool(api_key)
@@ -241,7 +325,7 @@ class SovereignKernel:
         print(f"[LLM DEBUG] endpoint={endpoint}")
 
         if not api_key:
-            raise Exception("GROQ_API_KEY is not set. Export GROQ_API_KEY before calling /praxis/run.")
+            raise Exception(f"{model_cfg['env']} is not set. Export {model_cfg['env']} before calling /praxis/run.")
         
         if self.semantic_bridge_enabled:
             existing_system_prompt = (
@@ -280,17 +364,17 @@ class SovereignKernel:
             with urllib.request.urlopen(req) as response:
                 res_data = json.loads(response.read().decode("utf-8"))
                 if "choices" not in res_data or not res_data["choices"]:
-                    raise Exception(f"Unexpected Groq response shape: {res_data}")
+                    raise Exception(f"Unexpected {model_cfg['provider']} response shape: {res_data}")
                 if return_raw:
                     return res_data
                 return res_data["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")
             raise Exception(
-                f"Groq API HTTP Error: status_code={e.code}, response_text={body}"
+                f"{model_cfg['provider'].capitalize()} API HTTP Error: status_code={e.code}, response_text={body}"
             )
         except Exception as e:
-            raise Exception(f"Groq API Error: {str(e)}")
+            raise Exception(f"{model_cfg['provider'].capitalize()} API Error: {str(e)}")
 
     # SPAN 3: ADV Entropy Scorer
     def score_adv(self, response):
@@ -469,6 +553,7 @@ class SovereignKernel:
 
     # Main Cycle
     def run_cycle(self, user_prompt, bridge_enabled=True):
+        self.step_counter += 1
         print(f"\n{'-'*60}")
         print(f"[KERNEL] Prompt: {user_prompt[:80]}")
 
@@ -491,12 +576,15 @@ class SovereignKernel:
         dynamics_gain = max(M, 0.12)
         for key in delta:
             delta[key] *= dynamics_gain
+        self.assert_governor_consistency()
         print(f"[SPAN 1] Delta: {delta}")
 
         is_safe, message = self.check_stability(delta)
         print(f"[SPAN 2] Gate: {message}")
 
         context, temperature, health_band = self._build_contract_context(M, bridge_enabled=bridge_enabled)
+        if self.deterministic:
+            temperature = self.fixed_temperature
         semantic_state = {
             "M": round(float(M), 6),
             "health_band": health_band,
@@ -505,7 +593,8 @@ class SovereignKernel:
         }
 
         try:
-            raw_response = self._call_llm_compat(user_prompt, context="", temperature=0.7)
+            raw_temp = self.fixed_temperature if self.deterministic else 0.7
+            raw_response = self._call_llm_compat(user_prompt, context="", temperature=raw_temp)
             governed_prompt = f"{context}\n{user_prompt}" if context else user_prompt
             governed_response = self._call_llm_compat(governed_prompt, context=context, temperature=temperature)
             if os.environ.get("AUREONICS_DEBUG_ASSERT", "1") == "1":
@@ -538,6 +627,7 @@ class SovereignKernel:
         self.apply_suspension_layer()
         # 4b) low-state excitation layer to prevent frozen attractors
         M = min(self.state["C"], self.state["R"], self.state["S"])
+        epsilon_injected = False
         if M < 0.15:
             epsilon = 0.01 * (0.15 - M)
             for k in self.state:
@@ -545,14 +635,28 @@ class SovereignKernel:
             total = sum(self.state.values())
             if total > 0:
                 self.state = {k: v / total for k, v in self.state.items()}
+            epsilon_injected = True
+            self.assert_governor_consistency()
 
         raw_state = {k: float(v) for k, v in self.state.items()}
         print("RAW STATE:", raw_state)
+        pre_projection_below_floor = any(v < 0.05 for v in raw_state.values())
 
         # 5) CBF projection (single enforcement point)
-        safety_projection_triggered = self.project_to_simplex()
+        if self.cbf_enabled:
+            safety_projection_triggered = self.project_to_simplex()
+        else:
+            self.normalize_state()
+            safety_projection_triggered = False
+        self.assert_governor_consistency()
         projected_state = {k: float(v) for k, v in self.state.items()}
         print("PROJECTED STATE:", self.state)
+        if pre_projection_below_floor:
+            if self.cbf_enabled:
+                if any(v < 0.05 for v in projected_state.values()):
+                    self.invariance_violations += 1
+            else:
+                self.invariance_violations += 1
         projection_magnitude = math.sqrt(
             sum((raw_state[k] - projected_state[k]) ** 2 for k in ["C", "R", "S"])
         )
@@ -561,9 +665,26 @@ class SovereignKernel:
 
         # Critical invariant guard.
         if abs(sum(self.state.values()) - 1.0) > 1e-6 or min(self.state.values()) < 0.05:
-            guard_projection_triggered = self.project_to_simplex()
+            if self.cbf_enabled:
+                guard_projection_triggered = self.project_to_simplex()
+            else:
+                self.normalize_state()
+                guard_projection_triggered = False
             safety_projection_triggered = safety_projection_triggered or guard_projection_triggered
+            self.assert_governor_consistency()
             print("[GUARD] Invariant drift detected, projection re-applied.")
+
+        lyapunov_V = self.lyapunov_candidate(projected_state)
+        delta_V = lyapunov_V - float(self.prev_lyapunov_V)
+        self.delta_v_total_steps += 1
+        if delta_V < 0:
+            self.delta_v_negative_steps += 1
+        elif delta_V > 0:
+            self.delta_v_positive_steps += 1
+        self.prev_lyapunov_V = lyapunov_V
+        self.max_deviation = max(self.max_deviation, lyapunov_V)
+        stability_ratio = self.delta_v_negative_steps / max(1, self.delta_v_total_steps)
+        forward_invariance_ok = self.invariance_violations == 0
 
         # 6) persist
         receipt = self.settle(
@@ -588,6 +709,28 @@ class SovereignKernel:
         receipt["effective_theta"] = round(float(effective_theta), 6)
         receipt["attack_pressure"] = round(float(self.attack_pressure), 6)
         receipt["semantic_signal"] = semantic_signal
+        receipt["lyapunov_V"] = round(float(lyapunov_V), 8)
+        receipt["delta_V"] = round(float(delta_V), 8)
+        receipt["stability_ratio"] = round(float(stability_ratio), 6)
+        receipt["delta_v_positive_ratio"] = round(float(self.delta_v_positive_steps / max(1, self.delta_v_total_steps)), 6)
+        receipt["max_deviation"] = round(float(self.max_deviation), 8)
+        receipt["invariance_violations"] = int(self.invariance_violations)
+        trace_entry = self.log_trace_step(
+            step=self.step_counter,
+            m=min(self.state["C"], self.state["R"], self.state["S"]),
+            attack_pressure=self.attack_pressure,
+            effective_theta=effective_theta,
+            epsilon_injected=epsilon_injected,
+            projection_triggered=safety_projection_triggered,
+            semantic_bridge=bridge_enabled,
+            raw_output=raw_response,
+            governed_output=governed_response,
+            lyapunov_V=lyapunov_V,
+            delta_V=delta_V,
+            stability_ratio=stability_ratio,
+            invariance_status=forward_invariance_ok,
+        )
+        receipt["trace"] = trace_entry
 
         return {
             "status": "Success",
@@ -609,6 +752,11 @@ class SovereignKernel:
             "health_band": health_band,
             "semantic_signal": semantic_signal,
             "projection_magnitude": projection_magnitude,
+            "lyapunov_V": round(float(lyapunov_V), 8),
+            "delta_V": round(float(delta_V), 8),
+            "stability_ratio": round(float(stability_ratio), 6),
+            "max_deviation": round(float(self.max_deviation), 8),
+            "invariance_violations": int(self.invariance_violations),
             "receipt": receipt,
         }
 
