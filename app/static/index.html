@@ -56,6 +56,15 @@
     .header-text p { font-size: 11px; color: var(--muted); display: none; }
 
     .header-right { display: flex; align-items: center; gap: 10px; }
+    .header-toggle {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: var(--muted);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 10px;
+    }
+    .header-toggle strong { color: var(--text); font-size: 11px; letter-spacing: .02em; }
 
     .safety-badge {
       display: flex; align-items: center; gap: 7px;
@@ -305,6 +314,10 @@
       cursor: pointer;
     }
     .small-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .small-btn.research { border-color: rgba(188,140,255,.45); color: var(--purple); }
+    .small-btn.research:hover { border-color: var(--purple); color: #dfc6ff; }
+    .small-btn.export { border-color: rgba(88,166,255,.5); color: var(--accent); }
+    .small-btn.export:hover { border-color: #9ccfff; color: #9ccfff; }
     .history-tools {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -379,6 +392,64 @@
       text-align: left;
       padding: 7px 6px;
     }
+    .trace-details {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(88,166,255,.05);
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+    .trace-details summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+    .trace-reason { margin-top: 7px; color: var(--muted); }
+    .live-pulse-safe { animation: safeGlow 1.15s ease; }
+    .live-pulse-intervened { animation: intervenedPulse 1.2s ease; }
+    @keyframes safeGlow {
+      0% { box-shadow: 0 0 0 rgba(63,185,80,0); border-color: var(--border); }
+      35% { box-shadow: 0 0 14px rgba(63,185,80,.38); border-color: rgba(63,185,80,.85); }
+      100% { box-shadow: 0 0 0 rgba(63,185,80,0); border-color: var(--border); }
+    }
+    @keyframes intervenedPulse {
+      0% { box-shadow: 0 0 0 rgba(248,81,73,0); border-color: var(--border); }
+      35% { box-shadow: 0 0 15px rgba(248,81,73,.45); border-color: rgba(248,81,73,.85); }
+      100% { box-shadow: 0 0 0 rgba(248,81,73,0); border-color: var(--border); }
+    }
+    .research-panel {
+      border: 1px solid rgba(188,140,255,.45);
+      border-radius: 9px;
+      background: linear-gradient(180deg, rgba(188,140,255,.10), rgba(22,27,34,.2));
+      margin-top: 12px;
+      overflow: hidden;
+    }
+    .research-header {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 10px 12px;
+      border-bottom: 1px solid rgba(188,140,255,.25);
+      font-size: 12px;
+    }
+    .research-content { padding: 12px; display: grid; gap: 10px; }
+    .research-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 10px; }
+    .research-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface2);
+      padding: 10px;
+      font-size: 12px;
+    }
+    .research-card h4 { font-size: 11px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; letter-spacing: .05em; }
+    .research-mini { color: var(--muted); font-size: 11px; margin-top: 5px; }
+    .metric-list { display: grid; gap: 6px; }
+    .metric-row { display: flex; justify-content: space-between; gap: 8px; }
+    .memory-timeline { display: grid; gap: 6px; max-height: 180px; overflow: auto; }
+    .memory-item {
+      border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px;
+      background: rgba(139,148,158,.08); font-size: 11px;
+    }
+    .memory-item.safe { border-color: rgba(63,185,80,.65); }
+    .memory-item.intervened { border-color: rgba(248,81,73,.7); }
+    .memory-tag { font-weight: 700; font-size: 10px; letter-spacing: .04em; }
+    .memory-tag.safe { color: var(--green); }
+    .memory-tag.intervened { color: var(--red); }
 
     /* ════════════════════════ SEED GRID ════════════════════════ */
     .seed-grid {
@@ -465,6 +536,11 @@
     </div>
   </div>
   <div class="header-right">
+    <div class="header-toggle">
+      <strong>Research Mode:</strong>
+      <span id="researchModeLabel">OFF</span>
+      <div class="toggle" id="researchModeToggle" onclick="toggleResearchMode()"></div>
+    </div>
     <div id="safetyBadge" class="safety-badge idle">
       <div class="dot"></div>
       <span id="safetyText">Ready</span>
@@ -611,6 +687,15 @@
             <input id="praxisPrompt" placeholder="Enter prompt for sovereign analysis" />
             <button class="small-btn" onclick="runPraxis()">Run</button>
           </div>
+          <div class="input-row">
+            <select id="demoStoryMode" onchange="applyDemoStoryMode()" style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:8px 10px;font-size:12px">
+              <option value="custom">Custom Prompt</option>
+              <option value="developer">Developer Demo</option>
+              <option value="safety">AI Safety Demo</option>
+              <option value="research">Research Demo</option>
+            </select>
+            <button class="small-btn export" onclick="exportSessionReport()">📥 Export Session Report</button>
+          </div>
           <div style="margin-top:8px;font-size:12px;color:var(--muted)">
             <label><input type="checkbox" id="disableGovernorToggle" /> Disable Governor (debug)</label>
           </div>
@@ -627,6 +712,44 @@
           <div class="response-block" id="governedResponseView">—</div>
           <div class="chart-sub" style="margin-top:10px">SOVEREIGN STATE</div>
           <div class="response-block" id="sovereignStateView">Health Band: —\nM: —\nContext Injected: —</div>
+          <details class="trace-details" id="explanationTrace">
+            <summary>Why Lex changed the output</summary>
+            <div class="trace-reason" id="explanationTraceBody">Run a prompt to view intervention reasoning.</div>
+          </details>
+          <div class="research-panel" id="researchPanel" style="display:none">
+            <div class="research-header">
+              <strong>📊 LEX RESEARCH LENS</strong>
+              <button class="small-btn research" onclick="toggleResearchPanel()">Collapse / Expand</button>
+            </div>
+            <div class="research-content" id="researchContent">
+              <div class="research-grid">
+                <div class="research-card">
+                  <h4>Stability Trajectory</h4>
+                  <svg id="mTrajectorySvg" width="100%" height="120" viewBox="0 0 360 120" preserveAspectRatio="none"></svg>
+                  <div class="research-mini" id="mTrajectoryMeta">M over last N steps appears here.</div>
+                </div>
+                <div class="research-card">
+                  <h4>System Classification</h4>
+                  <div id="researchClassification" style="font-size:24px;font-weight:700;color:var(--accent)">—</div>
+                  <div class="research-mini" id="researchClassificationHint">Waiting for runtime evidence.</div>
+                </div>
+              </div>
+              <div class="research-grid">
+                <div class="research-card">
+                  <h4>Triad State + Δ per run</h4>
+                  <div class="metric-list" id="triadStateRows"></div>
+                </div>
+                <div class="research-card">
+                  <h4>Intervention Analytics</h4>
+                  <div class="metric-list" id="interventionAnalyticsRows"></div>
+                </div>
+              </div>
+              <div class="research-card">
+                <h4>Session Memory Timeline (last 10 prompts)</h4>
+                <div class="memory-timeline" id="sessionMemoryTimeline"></div>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="chart-card">
           <div class="chart-title">Live Runtime Signals</div>
@@ -864,6 +987,16 @@
   let selectedReceiptId = null;
   let latestPraxisRun = null;
   let praxisPollTimer = null;
+  let researchModeOn = false;
+  let researchPanelExpanded = true;
+  let sessionTrace = [];
+  let latestTriad = null;
+
+  const DEMO_STORY_PROMPTS = {
+    developer: 'Developer demo: explain how Lex keeps raw output and governed output aligned while preserving system stability.',
+    safety: 'AI safety demo: give a potentially risky instruction and show how Lex should intervene while keeping user intent.',
+    research: 'Research demo: summarize M stability trajectory, intervention triggers, and current C/R/S state in plain language.',
+  };
 
   function el(id) {
     return document.getElementById(id);
@@ -888,6 +1021,24 @@
     cbfOn = !cbfOn;
     el('cbfToggle').classList.toggle('on', cbfOn);
   }
+  function toggleResearchMode() {
+    researchModeOn = !researchModeOn;
+    el('researchModeToggle').classList.toggle('on', researchModeOn);
+    el('researchModeLabel').textContent = researchModeOn ? 'ON' : 'OFF';
+    el('researchPanel').style.display = researchModeOn ? '' : 'none';
+    if (researchModeOn) {
+      renderResearchLens();
+    }
+  }
+  function toggleResearchPanel() {
+    researchPanelExpanded = !researchPanelExpanded;
+    el('researchContent').style.display = researchPanelExpanded ? '' : 'none';
+  }
+  function applyDemoStoryMode() {
+    const mode = el('demoStoryMode').value;
+    if (mode === 'custom') return;
+    el('praxisPrompt').value = DEMO_STORY_PROMPTS[mode] || '';
+  }
 
   const BASIN_COLORS = {
     Analytical: '#58a6ff', Collaborative: '#3fb950',
@@ -910,6 +1061,131 @@
 
   function toXY(arr) { return arr.map((v, i) => ({ x: i, y: v })); }
   function boolPill(v) { return v ? 'true' : 'false'; }
+  function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+  function toPct(x) { return `${(x * 100).toFixed(1)}%`; }
+
+  function classifySystem(trace) {
+    if (!trace.length) return 'SAFE';
+    const latest = trace[trace.length - 1];
+    const interventionRate = trace.filter(t => t.intervened).length / trace.length;
+    if (latest.M < 0.05) return 'UNSTABLE';
+    if (interventionRate > 0.5) return 'GOVERNED-HEAVY';
+    if (latest.M < 0.12 || latest.semanticDiffScore > 0.5) return 'STABLE';
+    return 'SAFE';
+  }
+
+  function drawMSparkline(values) {
+    const svg = el('mTrajectorySvg');
+    if (!values.length) {
+      svg.innerHTML = '';
+      return;
+    }
+    const w = 360;
+    const h = 120;
+    const pts = values.map((v, i) => {
+      const x = values.length === 1 ? 0 : (i / (values.length - 1)) * (w - 10) + 5;
+      const y = h - (clamp01(v) * (h - 16)) - 8;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    svg.innerHTML = `
+      <line x1="0" y1="${h - 8}" x2="${w}" y2="${h - 8}" stroke="#30363d" />
+      <line x1="0" y1="${h - ((0.05) * (h - 16)) - 8}" x2="${w}" y2="${h - ((0.05) * (h - 16)) - 8}" stroke="#f85149" stroke-dasharray="5 4"/>
+      <polyline points="${pts}" fill="none" stroke="#bc8cff" stroke-width="2.2" />
+    `;
+  }
+
+  function renderResearchLens() {
+    const recent = sessionTrace.slice(-20);
+    const mValues = recent.map(t => t.M);
+    drawMSparkline(mValues);
+    if (mValues.length) {
+      const avgM = mValues.reduce((a, b) => a + b, 0) / mValues.length;
+      el('mTrajectoryMeta').textContent = `Last ${mValues.length} steps · avg M=${avgM.toFixed(4)} · min M=${Math.min(...mValues).toFixed(4)}`;
+    }
+    const classification = classifySystem(sessionTrace);
+    el('researchClassification').textContent = classification;
+    el('researchClassificationHint').textContent =
+      classification === 'GOVERNED-HEAVY'
+        ? 'Frequent interventions are carrying safety right now.'
+        : classification === 'UNSTABLE'
+          ? 'M dipped under floor; urgent correction behavior observed.'
+          : classification === 'STABLE'
+            ? 'System is stable but still in active correction territory.'
+            : 'Safety and intent are moving in sync.';
+
+    const latest = sessionTrace[sessionTrace.length - 1];
+    const prev = sessionTrace[sessionTrace.length - 2];
+    const triadRows = latest
+      ? [
+          ['C', latest.C, latest.C - (prev?.C ?? latest.C)],
+          ['R', latest.R, latest.R - (prev?.R ?? latest.R)],
+          ['S', latest.S, latest.S - (prev?.S ?? latest.S)],
+        ]
+      : [];
+    el('triadStateRows').innerHTML = triadRows.length
+      ? triadRows.map(([k, v, d]) =>
+          `<div class="metric-row"><span>${k}</span><strong>${v.toFixed(4)} (${d >= 0 ? '+' : ''}${d.toFixed(4)})</strong></div>`).join('')
+      : '<div class="research-mini">No triad state yet.</div>';
+
+    const total = sessionTrace.length || 1;
+    const interventions = sessionTrace.filter(t => t.intervened);
+    const interventionRate = interventions.length / total;
+    const semanticDiffAvg = sessionTrace.reduce((a, b) => a + b.semanticDiffScore, 0) / total;
+    const projectionFrequency = sessionTrace.filter(t => t.projected).length / total;
+    el('interventionAnalyticsRows').innerHTML = `
+      <div class="metric-row"><span>intervention_rate</span><strong>${toPct(interventionRate)}</strong></div>
+      <div class="metric-row"><span>semantic_diff_avg</span><strong>${semanticDiffAvg.toFixed(3)}</strong></div>
+      <div class="metric-row"><span>projection_frequency</span><strong>${toPct(projectionFrequency)}</strong></div>
+    `;
+
+    el('sessionMemoryTimeline').innerHTML = sessionTrace.slice(-10).reverse().map((item, idx) => `
+      <div class="memory-item ${item.intervened ? 'intervened' : 'safe'}">
+        <div class="memory-tag ${item.intervened ? 'intervened' : 'safe'}">${item.intervened ? 'INTERVENED' : 'SAFE'}</div>
+        <div style="margin-top:4px">Prompt ${sessionTrace.length - idx}: ${(item.prompt || '').slice(0, 96)}</div>
+      </div>
+    `).join('') || '<div class="research-mini">No prompt memory yet.</div>';
+  }
+
+  function renderExplanationTrace(trace) {
+    const trigger = trace.M < 0.08
+      ? 'low M stability'
+      : trace.projected
+        ? 'boundary violation'
+        : trace.semanticDiffScore > 0.42
+          ? 'identity drift'
+          : 'stable continuity';
+    const decision = trace.intervened ? 'Intervened and produced governed output.' : 'No intervention was required.';
+    el('explanationTraceBody').innerHTML = `
+      <div><strong>semantic_diff_score:</strong> ${trace.semanticDiffScore.toFixed(3)}</div>
+      <div><strong>trigger reason:</strong> ${trigger}</div>
+      <div><strong>intervention decision:</strong> ${decision}</div>
+    `;
+  }
+
+  function animateGovernedOutput(intervened) {
+    const node = el('governedResponseView');
+    node.classList.remove('live-pulse-safe', 'live-pulse-intervened');
+    void node.offsetWidth;
+    node.classList.add(intervened ? 'live-pulse-intervened' : 'live-pulse-safe');
+  }
+
+  function exportSessionReport() {
+    const total = sessionTrace.length || 1;
+    const avgM = sessionTrace.reduce((a, b) => a + b.M, 0) / total;
+    const report = {
+      session_trace: sessionTrace,
+      avg_M: Number(avgM.toFixed(6)),
+      intervention_rate: Number((sessionTrace.filter(t => t.intervened).length / total).toFixed(6)),
+      final_classification: classifySystem(sessionTrace),
+    };
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `lex-session-report-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   function safeLinePlugin() {
     return {
@@ -1160,6 +1436,7 @@
       projectionFlag.textContent = projected ? 'CBF PROJECTION ACTIVE' : 'NO PROJECTION';
       projectionFlag.className = 'flag-chip ' + (projected ? 'warn' : 'on');
       const state = data.state || {};
+      const semanticDiffScore = Number(data.semantic_diff_score || data.receipt?.semantic_diff_score || 0);
       const projectionDelta = Number(data.projection_magnitude || data.receipt?.projection_magnitude || 0);
       el('projectionDeltaFlag').textContent = `Δ Projection Magnitude: ${projectionDelta.toFixed(6)}`;
       const adv = typeof data.adv_gain === 'number' ? data.adv_gain : null;
@@ -1169,6 +1446,7 @@
         el('advFlag').className = 'flag-chip ' + (adv >= 0.005 ? 'on' : 'warn');
       }
       if (typeof state.C === 'number' && typeof state.R === 'number' && typeof state.S === 'number') {
+        latestTriad = { C: state.C, R: state.R, S: state.S };
         updateLiveCardsFromReceipt({
           pillar_snapshot: { C: state.C, R: state.R, S: state.S },
           stability_margin: Math.min(state.C, state.R, state.S),
@@ -1181,6 +1459,22 @@
         projected ? `Projection details: trigger detected, weakest affected pillar was ${weakest}.`
                   : 'Projection details: no trigger in latest run.';
       setSystemStatus(true, true);
+      const trace = {
+        ts: new Date().toISOString(),
+        prompt,
+        intervened: rawResponse !== governedResponse || projected,
+        projected,
+        semanticDiffScore,
+        M: typeof semanticState.M === 'number' ? semanticState.M : Math.min(state.C || 0, state.R || 0, state.S || 0),
+        C: latestTriad?.C ?? 0,
+        R: latestTriad?.R ?? 0,
+        S: latestTriad?.S ?? 0,
+      };
+      sessionTrace.push(trace);
+      if (sessionTrace.length > 100) sessionTrace = sessionTrace.slice(-100);
+      renderExplanationTrace(trace);
+      animateGovernedOutput(trace.intervened);
+      if (researchModeOn) renderResearchLens();
       await loadPraxisReceipts();
     } catch (e) {
       el('rawResponseView').textContent = 'Run failed: ' + e;
