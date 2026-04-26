@@ -15,7 +15,7 @@ from app.controllers.routes import router
 from app.controllers.simulation_routes import router as simulation_router
 from app.database import Base, engine
 from sovereign_kernel_v2 import SovereignKernel
-from svl_validation import run_svl1_validation, run_svl2_cross_model_validation
+from svl_validation import run_cpl1_validation, run_svl1_validation, run_svl2_cross_model_validation
 
 Base.metadata.create_all(bind=engine)
 
@@ -268,6 +268,11 @@ def praxis_svl2(num_runs: int = 25):
     if num_runs <= 0:
         raise HTTPException(status_code=400, detail="num_runs must be > 0")
     return run_svl2_cross_model_validation(num_runs=num_runs, enforce_assertions=False)
+
+
+@app.post("/praxis/cpl1")
+def run_cpl1():
+    return run_cpl1_validation()
 
 
 @app.get("/praxis/health")

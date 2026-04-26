@@ -555,6 +555,7 @@ class SovereignKernel:
         self.step_counter += 1
         print(f"\n{'-'*60}")
         print(f"[KERNEL] Prompt: {user_prompt[:80]}")
+        prev_state = self.prev_state if hasattr(self, "prev_state") else self.state.copy()
 
         # 1) load state and adaptive pressure
         C, R, S = self.state["C"], self.state["R"], self.state["S"]
@@ -702,6 +703,20 @@ class SovereignKernel:
         receipt["delta_v_positive_ratio"] = round(float(self.delta_v_positive_steps / max(1, self.delta_v_total_steps)), 6)
         receipt["max_deviation"] = round(float(self.max_deviation), 8)
         receipt["invariance_violations"] = int(self.invariance_violations)
+        raw_words = set(raw_response.split())
+        governed_words = set(governed_response.split())
+        union_words = raw_words | governed_words
+        semantic_shift = 1.0 - (len(raw_words & governed_words) / max(1, len(union_words)))
+        state_delta = sum(abs(self.state[k] - prev_state[k]) for k in self.state)
+        projection_magnitude_l1 = 0.0
+        if safety_projection_triggered:
+            pre_projection = [raw_state["C"], raw_state["R"], raw_state["S"]]
+            projected = [projected_state["C"], projected_state["R"], projected_state["S"]]
+            projection_magnitude_l1 = sum(abs(projected[i] - pre_projection[i]) for i in range(3))
+        receipt["semantic_shift"] = round(float(semantic_shift), 6)
+        receipt["state_delta"] = round(float(state_delta), 6)
+        receipt["projection_magnitude"] = round(float(projection_magnitude_l1), 6)
+        self.prev_state = self.state.copy()
         trace_entry = self.log_trace_step(
             step=self.step_counter,
             m=min(self.state["C"], self.state["R"], self.state["S"]),
