@@ -197,6 +197,19 @@ POST /praxis/run
 
 ---
 
+
+## Core lock (frozen governance logic)
+
+Aureonics now supports a strict frozen-core mode:
+
+- `AUREONICS_CORE_LOCK = True`
+- startup assertion checks SHA-256 integrity for the governor, CBF module, triad kernel, and semantic bridge harness
+- when a protected file hash changes, startup fails fast with a core-lock violation
+
+This lock is intended to allow only bug fixes, logging improvements, and documentation while preventing silent structural drift in core constitutional mechanics.
+
+---
+
 ## Runtime and data notes
 
 - Default Praxis database file is `praxis.db`.

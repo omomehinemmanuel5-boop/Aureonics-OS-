@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.controllers.cbf_routes import router as cbf_router
+from app.core_lock import assert_core_lock
 from app.controllers.routes import router
 from app.controllers.simulation_routes import router as simulation_router
 from app.database import Base, engine
@@ -18,6 +19,7 @@ from sovereign_kernel_v2 import SovereignKernel
 from svl_validation import run_apl1_ablation, run_svl1_validation, run_svl2_cross_model_validation
 
 Base.metadata.create_all(bind=engine)
+assert_core_lock()
 
 app = FastAPI(title="Aureonics Governor Engine")
 app.add_middleware(
