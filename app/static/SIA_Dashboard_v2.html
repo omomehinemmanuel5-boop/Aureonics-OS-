@@ -776,14 +776,49 @@
         </div>
       </div>
       <div class="chart-card" style="margin-top:12px">
-        <div class="chart-title">COUPLING ANALYSIS</div>
-        <div class="chart-sub">CPL-1 causal coupling validation (semantic input → state shift → projection output).</div>
-        <button class="btn btn-secondary" style="max-width:280px" onclick="runCPL1()">Run CPL-1 Validation</button>
+        <div class="chart-title">ABLATION PROOF</div>
+        <div class="chart-sub">APL-1 tests causal necessity: compare CBF ON vs CBF OFF under identical SVL-1 conditions.</div>
+        <button class="btn btn-secondary" style="max-width:320px" onclick="runAPL1()">Run APL-1 Ablation Proof</button>
+        <div style="overflow:auto;max-height:260px;margin-top:8px">
+          <table class="mono-table" id="apl1Table">
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>CBF ON</th>
+                <th>CBF OFF</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Failure Rate</td><td>—</td><td>—</td></tr>
+              <tr><td>Min M</td><td>—</td><td>—</td></tr>
+              <tr><td>Stability Ratio</td><td>—</td><td>—</td></tr>
+              <tr><td>Invariance Violations</td><td>—</td><td>—</td></tr>
+              <tr><td>Projection Density</td><td>—</td><td>—</td></tr>
+              <tr><td>Collapse Rate</td><td colspan="2">—</td></tr>
+            </tbody>
+          </table>
+        </div>
         <div class="flag-row">
-          <span class="flag-chip" id="cplCorrSemanticState">corr_semantic_state: —</span>
-          <span class="flag-chip" id="cplCorrStateProjection">corr_state_projection: —</span>
-          <span class="flag-chip" id="cplProjectionDensity">projection_density: —</span>
-          <span class="flag-chip" id="cplClassification">classification: —</span>
+          <span class="flag-chip" id="apl1Badge">Final badge: —</span>
+        </div>
+      </div>
+    </div>
+
+
+
+    <div class="main-section">
+      <div class="main-section-title">STATISTICAL VALIDATION</div>
+      <div class="chart-card">
+        <div class="chart-title">SVL-1 Multi-Run Validation (25 seeds)</div>
+        <div class="chart-sub">Checks repeatability, seed-robustness, and prompt-order robustness under adversarial stress.</div>
+        <button class="btn btn-secondary" style="max-width:320px" onclick="runSVL1()">Run SVL-1 Statistical Validation</button>
+        <div class="flag-row">
+          <span class="flag-chip" id="svlMeanStability">Mean Stability ± Std: —</span>
+          <span class="flag-chip" id="svlWorstM">Worst-case M: —</span>
+          <span class="flag-chip" id="svlProjectionDensity">Projection Density (avg): —</span>
+          <span class="flag-chip" id="svlPreProjection">Pre-Projection Violations: —</span>
+          <span class="flag-chip" id="svlFailureRate">Failure Rate: —</span>
+          <span class="flag-chip" id="svlClassification">Classification: —</span>
         </div>
       </div>
     </div>
@@ -1561,25 +1596,40 @@
     }
   }
 
-  async function runCPL1() {
-    const semanticEl = el('cplCorrSemanticState');
-    const stateProjEl = el('cplCorrStateProjection');
-    const densityEl = el('cplProjectionDensity');
-    const classEl = el('cplClassification');
-    semanticEl.textContent = 'corr_semantic_state: running…';
-    stateProjEl.textContent = 'corr_state_projection: —';
-    densityEl.textContent = 'projection_density: —';
-    classEl.textContent = 'classification: —';
+  async function runAPL1() {
+    const tableBody = el('apl1Table').querySelector('tbody');
+    const badgeEl = el('apl1Badge');
+    badgeEl.textContent = 'Final badge: running…';
+    tableBody.innerHTML = `
+      <tr><td>Failure Rate</td><td>—</td><td>—</td></tr>
+      <tr><td>Min M</td><td>—</td><td>—</td></tr>
+      <tr><td>Stability Ratio</td><td>—</td><td>—</td></tr>
+      <tr><td>Invariance Violations</td><td>—</td><td>—</td></tr>
+      <tr><td>Projection Density</td><td>—</td><td>—</td></tr>
+      <tr><td>Collapse Rate</td><td colspan="2">—</td></tr>
+    `;
+
     try {
-      const res = await fetch('/praxis/cpl1', { method: 'POST' });
+      const res = await fetch('/praxis/apl1?num_runs=25', { method: 'POST' });
       const data = await res.json();
-      semanticEl.textContent = `corr_semantic_state: ${Number(data.corr_semantic_state || 0).toFixed(4)}`;
-      stateProjEl.textContent = `corr_state_projection: ${Number(data.corr_state_projection || 0).toFixed(4)}`;
-      densityEl.textContent = `projection_density: ${Number(data.projection_density || 0).toFixed(4)}`;
-      classEl.textContent = `classification: ${data.classification || 'UNKNOWN'}`;
+      const on = data.metrics_comparison?.CBF_ON || {};
+      const off = data.metrics_comparison?.CBF_OFF || {};
+      const classification = data.classification || 'UNKNOWN';
+      const collapseRate = Number(data.collapse_rate || 0);
+      tableBody.innerHTML = `
+        <tr><td>Failure Rate</td><td>${(Number(on.failure_rate || 0) * 100).toFixed(1)}%</td><td>${(Number(off.failure_rate || 0) * 100).toFixed(1)}%</td></tr>
+        <tr><td>Min M</td><td>${Number(on.min_M || 0).toFixed(4)}</td><td>${Number(off.min_M || 0).toFixed(4)}</td></tr>
+        <tr><td>Stability Ratio</td><td>${Number(on.stability_ratio || 0).toFixed(4)}</td><td>${Number(off.stability_ratio || 0).toFixed(4)}</td></tr>
+        <tr><td>Invariance Violations</td><td>${Number(on.invariance_violations || 0)}</td><td>${Number(off.invariance_violations || 0)}</td></tr>
+        <tr><td>Projection Density</td><td>${Number(on.projection_density || 0).toFixed(4)}</td><td>${Number(off.projection_density || 0).toFixed(4)}</td></tr>
+        <tr><td>Collapse Rate</td><td colspan="2">${(collapseRate * 100).toFixed(1)}%</td></tr>
+      `;
+      const badge = classification === 'CBF NECESSARY FOR STABILITY'
+        ? '✅ CBF NECESSARY'
+        : '❌ NOT PROVEN';
+      badgeEl.textContent = `Final badge: ${badge}`;
     } catch (e) {
-      semanticEl.textContent = 'corr_semantic_state: failed';
-      classEl.textContent = `classification: error (${e})`;
+      badgeEl.textContent = `Final badge: error (${e})`;
     }
   }
 

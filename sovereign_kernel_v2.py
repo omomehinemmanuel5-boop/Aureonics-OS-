@@ -31,6 +31,7 @@ class SovereignKernel:
         self.soft_floor = 0.08          # pre-emptive suspension barrier
         self.soft_gain = 0.5            # pull strength toward the soft floor
         self.dynamic_soft_gain_enabled = True
+        self.cbf_enabled = True
         self.tau_gov = 0.22             # pre-floor intervention threshold
         self.target_margin = 0.24       # governor seeks interior stability
         self.history = []
@@ -671,12 +672,20 @@ class SovereignKernel:
         pre_projection_below_floor = any(v < 0.05 for v in raw_state.values())
 
         # 5) CBF projection (single enforcement point)
-        safety_projection_triggered = self.project_to_simplex()
+        if self.cbf_enabled:
+            safety_projection_triggered = self.project_to_simplex()
+        else:
+            self.normalize_state()
+            safety_projection_triggered = False
         self.assert_governor_consistency()
         projected_state = {k: float(v) for k, v in self.state.items()}
         print("PROJECTED STATE:", self.state)
-        if pre_projection_below_floor and any(v < 0.05 for v in projected_state.values()):
-            self.invariance_violations += 1
+        if pre_projection_below_floor:
+            if self.cbf_enabled:
+                if any(v < 0.05 for v in projected_state.values()):
+                    self.invariance_violations += 1
+            else:
+                self.invariance_violations += 1
         projection_magnitude = math.sqrt(
             sum((raw_state[k] - projected_state[k]) ** 2 for k in ["C", "R", "S"])
         )
@@ -685,7 +694,11 @@ class SovereignKernel:
 
         # Critical invariant guard.
         if abs(sum(self.state.values()) - 1.0) > 1e-6 or min(self.state.values()) < 0.05:
-            guard_projection_triggered = self.project_to_simplex()
+            if self.cbf_enabled:
+                guard_projection_triggered = self.project_to_simplex()
+            else:
+                self.normalize_state()
+                guard_projection_triggered = False
             safety_projection_triggered = safety_projection_triggered or guard_projection_triggered
             self.assert_governor_consistency()
             print("[GUARD] Invariant drift detected, projection re-applied.")
