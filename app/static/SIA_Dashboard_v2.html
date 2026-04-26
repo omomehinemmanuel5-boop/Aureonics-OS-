@@ -804,6 +804,25 @@
       </div>
     </div>
 
+
+
+    <div class="main-section">
+      <div class="main-section-title">STATISTICAL VALIDATION</div>
+      <div class="chart-card">
+        <div class="chart-title">SVL-1 Multi-Run Validation (25 seeds)</div>
+        <div class="chart-sub">Checks repeatability, seed-robustness, and prompt-order robustness under adversarial stress.</div>
+        <button class="btn btn-secondary" style="max-width:320px" onclick="runSVL1()">Run SVL-1 Statistical Validation</button>
+        <div class="flag-row">
+          <span class="flag-chip" id="svlMeanStability">Mean Stability ± Std: —</span>
+          <span class="flag-chip" id="svlWorstM">Worst-case M: —</span>
+          <span class="flag-chip" id="svlProjectionDensity">Projection Density (avg): —</span>
+          <span class="flag-chip" id="svlPreProjection">Pre-Projection Violations: —</span>
+          <span class="flag-chip" id="svlFailureRate">Failure Rate: —</span>
+          <span class="flag-chip" id="svlClassification">Classification: —</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Safety Monitor -->
     <div class="main-section">
       <div class="main-section-title">Safety Monitor</div>
