@@ -18,11 +18,12 @@ CORE_MANIFEST_V1_0: dict[str, str] = {
 CORE_MANIFEST_V1_1: dict[str, str] = {
     "app/services/governor_service.py": "9a50c5712fb3e72625b88f1bf5aebb60ecfde629877d4b173310371c4e03dcfa",
     "app/services/cbf_service.py": "0291c2cbdc3fe2a5a7672e4636e8011fe3432158cbe25ff3b4bd567664963a83",
-    "sovereign_kernel_v2.py": "2c0410c69b80555da01df674c358a44af1b3c303caf8afb18746a267609a37d0",
+    "sovereign_kernel_v2.py": "43a26baf60f64c3923d6bbbc6072c4de8158ce56c15220f47f11d19c5ebcb738",
     "scripts/run_semantic_bridge_ab.py": "9600d00e0830c4a3924140595283e0f433190a7eaf1051f7d7eb38c1d58ea73c",
 }
 
 ACTIVE_MANIFEST: dict[str, str] = CORE_MANIFEST_V1_1
+CORE_LOCK_MANIFEST: dict[str, str] = ACTIVE_MANIFEST
 
 
 def compute_hash(path: Path) -> str:
