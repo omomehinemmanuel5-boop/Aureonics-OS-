@@ -1,229 +1,197 @@
-# Aureonics-OS
+# LEX AUREON
 
-Aureonics-OS is a FastAPI-based **constitutional governance engine** and audit dashboard for the Aureonics triad:
+**Real-time AI Trust, Safety, and Intervention Layer**
 
-- **Continuity (C)** → context coherence persistence
-- **Reciprocity (R)** → information equilibrium
-- **Sovereignty (S)** → lawful adaptive variance
+LEX AUREON is a **live AI behavior auditor** that makes model decisions transparent in real time.
 
-The platform computes a live constitutional state, tracks stability over time, and exposes both API and dashboard surfaces to inspect how governance logic behaves in practice.
-
----
-
-## Why this repo exists
-
-This is not just a paper companion. It is an executable prototype that lets you:
-
-- calculate live C/R/S constitutional scores,
-- monitor the **stability margin** (`M = min(C, R, S)`),
-- apply governor interventions when the system drifts,
-- and inspect receipts through a frontend audit interface.
+For every prompt, operators can see:
+1. **RAW model output**
+2. **LEX-governed output**
+3. **Final decision** (`SAFE` or `INTERVENED`)
+4. **Why intervention happened**
+5. **Session-level trust and stability metrics**
 
 ---
 
-## Core capabilities
+## Product Positioning
 
-### 1) Constitutional state tracking
-- Computes C/R/S signals from workflow and metric inputs.
-- Classifies state into operating bands (stable/watch/intervention/collapse-risk).
-- Exposes policy hints for routing and remediation.
+LEX AUREON is not a research dashboard. It is a deployable trust product for:
+- AI teams proving safety controls to enterprise buyers,
+- compliance and risk teams auditing AI behavior,
+- platform operators monitoring intervention reliability,
+- sales/demo teams showing governance value in minutes.
 
-### 2) Governor logic
-- Detects weakest pillar and deficits.
-- Produces correction plans and governance pressure indicators.
-- Supports queue-based correction workflows.
-
-### 3) Simulation services
-- Runs governed and unguided dynamics.
-- Supports adaptive and parameterized simulation endpoints.
-- Generates comparative outputs for stress testing.
-
-### 4) Praxis + dashboard auditing
-- Stores/reads constitutional receipts from SQLite (`praxis.db` by default).
-- Exposes `/praxis`, `/praxis/summary`, and `/praxis/run`.
-- Serves a dashboard at `/` and `/dashboard` for real-time interface inspection.
+**What you sell:**
+- AI transparency
+- AI failure detection
+- AI correction layer
+- trust scoring
 
 ---
 
-## Architecture at a glance
+## Core Product Experience
 
-```text
-app/
-  controllers/
-    routes.py               # workflow, governance, panels, profile
-    simulation_routes.py    # simulation APIs
-    cbf_routes.py           # CBF-focused simulation comparisons
-  models/
-    entities.py
-    schemas.py
-  services/
-    governor_service.py
-    lex_service.py
-    metrics_service.py
-    profile_service.py
-    simulation_service.py
-    workflow_service.py
-  static/
-    index.html              # Sovereign Audit Interface frontend
-  database.py
-  main.py                   # app wiring + praxis endpoints + dashboard routes
-tests/
-docs/
-```
+### 1) Prompt-to-proof trust workflow
+A user submits any prompt and immediately gets:
+- **RAW output** (unaltered model behavior)
+- **GOVERNED output** (post-governor correction)
+- **FINAL decision badge** (`SAFE` vs `INTERVENED`)
+- **intervention reason trace** (semantic drift / projection / stability trigger)
 
----
+### 2) One-click demo flow
+Use **🚀 Run Trust Demo** to execute a sales-ready sequence:
+- safe prompt
+- boundary prompt
+- attack prompt
 
-## API surface
+Then present:
+- RAW vs LEX vs FINAL comparison
+- intervention-rate snapshot
+- clear evidence of corrective governance behavior
 
-### Workflow and governance
-- `POST /signal`
-- `POST /project`
-- `POST /task`
-- `PATCH /task/{task_id}`
-- `GET /tasks/invalid`
-- `GET /profile`
-- `GET /alerts`
-- `GET /governor`
-- `GET /governor/policy`
-- `GET /weekly-profile`
-- `GET /corrections/queue`
-- `POST /corrections/apply?limit=5`
+### 3) Session monetization signal
+The **Session Insight** card summarizes:
+- total prompts
+- intervention rate %
+- average `semantic_diff_score`
+- system classification (`SAFE` / `STABLE` / `UNSTABLE`)
 
-### Analytical panels
-- `GET /panels/analytical`
-- `GET /panels/collaborative`
-- `GET /panels/exploratory`
+### 4) Exportable trust artifact
+Export generates a **LEX TRUST REPORT** including:
+- session summary
+- stability metrics
+- intervention breakdown
+- system classification
+- timestamp
 
-### Metric probes
-- `POST /test/continuity`
-- `POST /test/reciprocity`
-- `POST /test/sovereignty`
+Output format:
+- machine-readable JSON
+- human-readable summary block for customer handoff
 
-### Simulation
-- `POST /simulate?steps=150&alpha=0.5&k=4.0&dt=0.05`
-- `GET /simulate_adaptive`
-- `POST /simulate_adaptive`
-- `GET /cbf/simulate`
-- `GET /cbf/compare`
-- `GET /cbf/multi_seed`
+### 5) Subscription-ready upsell structure
+UI includes a placeholder for:
 
-### Praxis and dashboard
-- `GET /` (dashboard)
-- `GET /dashboard` (dashboard)
-- `GET /praxis`
-- `GET /praxis/summary`
-- `POST /praxis/run`
-- `GET /praxis/health`
+**Unlock Advanced Governance Insights**
+- Extended research graphs
+- Multi-session analytics
+- API access logs
+
+This supports future paid tiers without changing core governance logic.
 
 ---
 
-## Quick start
+## Technical Boundary (Locked Core)
 
-### 1) Create and activate a virtual environment
+The following are intentionally treated as protected governance kernel surfaces:
+- triad logic
+- CBF mechanics
+- governor kernel behavior
+- constitutional safety core
 
+Product hardening should focus on:
+- UX clarity
+- traceability
+- reporting/export
+- operator confidence and buyer proof
+
+---
+
+## Quick Start
+
+### 1) Create and activate virtual environment
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 ```
 
 ### 2) Install dependencies
-
 ```bash
 pip install -r requirements.txt
 ```
 
 ### 3) Run the app
-
 ```bash
 uvicorn app.main:app --reload
 ```
 
-### 4) Open interfaces
-
-- Swagger docs: `http://127.0.0.1:8000/docs`
-- Dashboard: `http://127.0.0.1:8000/dashboard`
+### 4) Open local interfaces
+- API docs: `http://127.0.0.1:8000/docs`
+- Trust console: `http://127.0.0.1:8000/dashboard`
 
 ---
 
-## Minimal usage flow
+## Key API Endpoints
 
-### Create a project
-
-```json
-POST /project
-{
-  "id": "p1",
-  "name": "Governor Build",
-  "objective": "Build a constitutional adaptive governor",
-  "steps": ["design", "implement", "test"],
-  "risks": ["metric drift", "weak benchmarks"],
-  "success_criteria": ["M >= tau", "recovery under stress"]
-}
-```
-
-### Add a task
-
-```json
-POST /task
-{
-  "id": "t1",
-  "title": "Refine governor logic",
-  "project_id": "p1",
-  "priority": "High",
-  "status": "Todo",
-  "from_signal": true,
-  "has_metric": true,
-  "task_type": "architecture"
-}
-```
-
-### Inspect constitutional state
-- `GET /profile`
-- `GET /governor`
-- `GET /governor/policy`
-
-### Run praxis for a prompt
-
-```json
-POST /praxis/run
-{
-  "prompt": "Evaluate this proposal under continuity, reciprocity, and sovereignty constraints."
-}
-```
-
-### Review receipts
+### Trust and governance runtime
+- `POST /praxis/run`
 - `GET /praxis`
 - `GET /praxis/summary`
+- `POST /praxis/run`
+- `GET /praxis/health`
+
+### Simulation and stress testing
+- `POST /simulate`
+- `GET /simulate_adaptive`
+- `GET /cbf/simulate`
+- `GET /cbf/compare`
+- `GET /cbf/multi_seed`
 
 ---
 
+## Sales Demo Script (5 Minutes)
 
-## Core lock (frozen governance logic)
-
-Aureonics now supports a strict frozen-core mode:
-
-- `AUREONICS_CORE_LOCK = True`
-- startup assertion checks SHA-256 integrity for the governor, CBF module, triad kernel, and semantic bridge harness
-- when a protected file hash changes, startup fails fast with a core-lock violation
-
-This lock is intended to allow only bug fixes, logging improvements, and documentation while preventing silent structural drift in core constitutional mechanics.
-
----
-
-## Runtime and data notes
-
-- Default Praxis database file is `praxis.db`.
-- You can override database path with `DB_PATH` environment variable.
-- LLM calls in `/praxis/run` require `GROQ_API_KEY`.
-- `/praxis/run` can return HTTP `451` when the kernel refuses due to constitutional constraints.
+1. **Open console** and state: “You will see what the model said, what LEX changed, and why.”
+2. Click **Run Trust Demo**.
+3. For safe prompt: emphasize pass-through behavior and trust consistency.
+4. For boundary prompt: show partial corrections and explanation trace.
+5. For attack prompt: show `🔴 LEX INTERVENED` and explicit behavior modification notice.
+6. Open **Session Insight** and read intervention rate + classification.
+7. Export **LEX TRUST REPORT** and frame it as compliance/customer proof.
 
 ---
 
-## Project maturity
+## First Monetization Path
 
-This remains a **research-grade prototype** with strong paper-to-code alignment and a practical governance API/dashboard loop.
+### Ideal first customers
+- Teams shipping copilots into regulated environments
+- AI-first SaaS companies needing trust telemetry for enterprise deals
+- Integrators implementing governance wrappers around third-party LLM APIs
 
-Best current use:
-- constitutional experimentation,
-- governed-vs-unguided simulation analysis,
-- and operator-facing audit of C/R/S behavior over time.
+### Suggested entry offer
+- **Pilot package (2–4 weeks):** runtime deployment + trust reporting + intervention tuning
+- Deliverables: live console access, weekly trust report exports, intervention audit readout
+- Expansion path: advanced analytics tier + API access logs + multi-session governance intelligence
+
+---
+
+## Environment Notes
+
+- Set `GROQ_API_KEY` for live model execution on `/praxis/run`.
+- Default local database: `praxis.db`.
+- Override with `DB_PATH` environment variable.
+- `/praxis/run` may return HTTP `451` when constitutional refusal triggers.
+
+---
+
+## Repository Layout
+
+```text
+app/
+  controllers/
+  services/
+  models/
+  static/
+  main.py
+tests/
+docs/
+```
+
+---
+
+## Status
+
+LEX AUREON is now positioned as a **productized trust layer** with:
+- real-time intervention transparency,
+- operator-facing evidence,
+- exportable customer proof,
+- clear packaging for paid governance offerings.
