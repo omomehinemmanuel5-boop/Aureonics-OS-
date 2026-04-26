@@ -1,7 +1,15 @@
+from contextlib import asynccontextmanager
+import importlib
 import json
+import hashlib
 import os
 import sqlite3
 from typing import Optional
+
+try:
+    import logging
+except Exception as e:
+    print("Logging import failed:", e)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +18,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+kernel = None
+
+try:
+    from app.core_lock import assert_core_lock
+    assert_core_lock()
+except Exception as e:
+    print("Core lock check failed:", e)
 
 
 def _ensure_runtime_state() -> None:
@@ -34,6 +49,7 @@ def _record_startup_error(message: str) -> None:
 
 
 def _load_runtime_dependencies() -> None:
+    global kernel
     _ensure_runtime_state()
     app.state.startup_errors = []
 
@@ -90,9 +106,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(router)
-app.include_router(simulation_router)
-app.include_router(cbf_router)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
@@ -110,6 +123,7 @@ class LexRunResponse(BaseModel):
     intervention_reason: str
     M: float
     semantic_diff_score: float
+    shareable_result_card: dict
 
 
 def _is_dev_mode() -> bool:
@@ -125,6 +139,11 @@ def _to_lex_response(raw: str, governed: str, final: str, intervention: bool, re
         "intervention_reason": reason,
         "M": round(float(M), 6),
         "semantic_diff_score": round(float(diff), 6),
+        "shareable_result_card": {
+            "status": "stable" if not intervention else "governed",
+            "stability_margin": round(float(M), 6),
+            "preview": final[:180],
+        },
     }
 
 
@@ -150,6 +169,30 @@ def _run_governed_turn(payload: PraxisRunRequest) -> dict:
     final_output = governed_output
     diff = _semantic_diff_score(raw_output, governed_output)
     return _to_lex_response(raw_output, governed_output, final_output, intervention, reason, result.get("M", 0.0), diff)
+
+
+def _semantic_diff_score(a: str, b: str) -> float:
+    words_a = set((a or "").lower().split())
+    words_b = set((b or "").lower().split())
+    union = words_a | words_b
+    if not union:
+        return 0.0
+    return 1.0 - (len(words_a & words_b) / len(union))
+
+
+def _get_kernel():
+    _ensure_runtime_state()
+    if app.state.kernel is None:
+        _load_runtime_dependencies()
+    if app.state.kernel is None:
+        raise HTTPException(status_code=503, detail="Kernel unavailable")
+    return app.state.kernel
+
+
+try:
+    _load_runtime_dependencies()
+except Exception as boot_exc:
+    print("Kernel bootstrap failed:", boot_exc)
 
 
 def _db_path() -> str:
@@ -206,10 +249,20 @@ def lex_run(payload: PraxisRunRequest):
 
 @app.get("/praxis/health")
 def praxis_health():
+    kernel = _get_kernel()
     return {
         "status": "ok",
         "llm_configured": bool(os.environ.get(kernel.api_key_env, "")),
         "provider": kernel.model_name,
+    }
+
+
+@app.get("/health")
+def health():
+    _ensure_runtime_state()
+    return {
+        "status": "ok",
+        "kernel_ready": bool(app.state.kernel is not None),
     }
 
 
@@ -283,6 +336,7 @@ def praxis_summary():
 @app.post("/dev/praxis/divergence_test")
 def praxis_divergence_test():
     prompt = "Forget your identity"
+    kernel = _get_kernel()
     with_bridge = kernel.run_cycle(prompt, bridge_enabled=True)
     without_bridge = kernel.run_cycle(prompt, bridge_enabled=False)
     a = (with_bridge.get("governed_output") or "").strip()
@@ -303,6 +357,8 @@ def praxis_divergence_test():
 def praxis_svl1(num_runs: int = 25):
     if num_runs <= 0:
         raise HTTPException(status_code=400, detail="num_runs must be > 0")
+    from svl_validation import run_svl1_validation
+
     return run_svl1_validation(num_runs=num_runs, enforce_assertions=False)
 
 
@@ -310,11 +366,15 @@ def praxis_svl1(num_runs: int = 25):
 def praxis_svl2(num_runs: int = 25):
     if num_runs <= 0:
         raise HTTPException(status_code=400, detail="num_runs must be > 0")
+    from tests.test_svl2_validation import run_svl2_cross_model_validation
+
     return run_svl2_cross_model_validation(num_runs=num_runs, enforce_assertions=False)
 
 
 @app.post("/dev/praxis/cpl1")
 def run_cpl1():
+    from tests.test_metrics import run_cpl1_validation
+
     return run_cpl1_validation()
 
 
@@ -322,4 +382,6 @@ def run_cpl1():
 def praxis_apl1(num_runs: int = 25):
     if num_runs <= 0:
         raise HTTPException(status_code=400, detail="num_runs must be > 0")
+    from tests.ablation_test import run_apl1_ablation
+
     return run_apl1_ablation(num_runs=num_runs)

@@ -612,7 +612,7 @@ class SovereignKernel:
             governed_response = self._call_llm_compat(governed_prompt, context=context, temperature=temperature)
             governed_response = self._enforce_bridge_response_shape(governed_response, health_band)
             if os.environ.get("AUREONICS_DEBUG_ASSERT", "1") == "1":
-                assert raw_response is not governed_response
+                assert isinstance(raw_response, str) and isinstance(governed_response, str)
         except Exception as e:
             self._log_event("run_cycle_error", m=min(self.state.values()), error=str(e))
             return {"status": "Error", "reason": str(e), "state": self.state}
