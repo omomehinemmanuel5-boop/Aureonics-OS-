@@ -744,6 +744,11 @@ class SovereignKernel:
         receipt["delta_v_positive_ratio"] = round(float(self.delta_v_positive_steps / max(1, self.delta_v_total_steps)), 6)
         receipt["max_deviation"] = round(float(self.max_deviation), 8)
         receipt["invariance_violations"] = int(self.invariance_violations)
+        raw_words = set(raw_response.split())
+        governed_words = set(governed_response.split())
+        union_words = raw_words | governed_words
+        semantic_shift = 1.0 - (len(raw_words & governed_words) / max(1, len(union_words)))
+        state_delta = sum(abs(self.state[k] - prev_state[k]) for k in self.state)
         semantic_shift = abs(len(raw_response) - len(governed_response)) / max(1, len(raw_response))
         base_state_delta = sum(abs(self.state[k] - prev_state[k]) for k in self.state)
         projection_magnitude_l1 = 0.0
