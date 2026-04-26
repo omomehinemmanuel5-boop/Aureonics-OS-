@@ -1,6 +1,8 @@
 import importlib
+import logging
 import os
 import sqlite3
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
@@ -9,7 +11,81 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-app = FastAPI(title="Aureonics Governor Engine")
+logger = logging.getLogger(__name__)
+
+
+def _ensure_runtime_state() -> None:
+    if not hasattr(app.state, "startup_errors"):
+        app.state.startup_errors = []
+    if not hasattr(app.state, "core_version"):
+        app.state.core_version = None
+    if not hasattr(app.state, "kernel"):
+        app.state.kernel = None
+    if not hasattr(app.state, "kernel_api_key_env"):
+        app.state.kernel_api_key_env = ""
+    if not hasattr(app.state, "kernel_model_name"):
+        app.state.kernel_model_name = ""
+    if not hasattr(app.state, "routers_loaded"):
+        app.state.routers_loaded = False
+
+
+def _record_startup_error(message: str) -> None:
+    _ensure_runtime_state()
+    app.state.startup_errors.append(message)
+    logger.warning(message)
+
+
+def _load_runtime_dependencies() -> None:
+    _ensure_runtime_state()
+    app.state.startup_errors = []
+
+    # Keep optional governance stack from blocking uvicorn startup.
+    try:
+        database_mod = importlib.import_module("app.database")
+        database_mod.Base.metadata.create_all(bind=database_mod.engine)
+    except Exception as exc:
+        _record_startup_error(f"database init failed: {exc}")
+
+    try:
+        core_lock_mod = importlib.import_module("app.core_lock")
+        app.state.core_version = getattr(core_lock_mod, "AUREONICS_CORE_VERSION", None)
+        try:
+            core_lock_mod.assert_core_lock()
+        except Exception as lock_exc:
+            _record_startup_error(f"core lock warning: {lock_exc}")
+    except Exception as exc:
+        _record_startup_error(f"core lock module unavailable: {exc}")
+
+    try:
+        kernel_mod = importlib.import_module("sovereign_kernel_v2")
+        kernel = kernel_mod.SovereignKernel()
+        app.state.kernel = kernel
+        app.state.kernel_api_key_env = getattr(kernel, "api_key_env", "")
+        app.state.kernel_model_name = getattr(kernel, "model_name", "")
+    except Exception as exc:
+        _record_startup_error(f"kernel init failed: {exc}")
+
+    if not app.state.routers_loaded:
+        for module_name, attr_name in (
+            ("app.controllers.routes", "router"),
+            ("app.controllers.simulation_routes", "router"),
+            ("app.controllers.cbf_routes", "router"),
+        ):
+            try:
+                module = importlib.import_module(module_name)
+                app.include_router(getattr(module, attr_name))
+            except Exception as exc:
+                _record_startup_error(f"router load failed ({module_name}): {exc}")
+        app.state.routers_loaded = True
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    _load_runtime_dependencies()
+    yield
+
+
+app = FastAPI(title="Aureonics Governor Engine", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -89,6 +165,7 @@ def _to_lex_response(raw: str, governed: str, final: str, intervention: bool, re
 
 
 def _get_kernel():
+    _ensure_runtime_state()
     kernel = getattr(app.state, "kernel", None)
     if kernel is None:
         errors = getattr(app.state, "startup_errors", [])
@@ -123,54 +200,6 @@ def _run_governed_turn(payload: PraxisRunRequest) -> dict:
     return _to_lex_response(raw_output, governed_output, final_output, intervention, reason, result.get("M", 0.0), diff)
 
 
-@app.on_event("startup")
-def startup_init() -> None:
-    app.state.startup_errors = []
-    app.state.core_version = None
-    app.state.kernel = None
-    app.state.kernel_api_key_env = ""
-    app.state.kernel_model_name = ""
-
-    # Keep optional governance stack from blocking uvicorn startup.
-    try:
-        database_mod = importlib.import_module("app.database")
-        database_mod.Base.metadata.create_all(bind=database_mod.engine)
-    except Exception as exc:
-        app.state.startup_errors.append(f"database init failed: {exc}")
-
-    try:
-        core_lock_mod = importlib.import_module("app.core_lock")
-        app.state.core_version = getattr(core_lock_mod, "AUREONICS_CORE_VERSION", None)
-        try:
-            core_lock_mod.assert_core_lock()
-        except Exception as lock_exc:
-            app.state.startup_errors.append(f"core lock warning: {lock_exc}")
-    except Exception as exc:
-        app.state.startup_errors.append(f"core lock module unavailable: {exc}")
-
-    try:
-        kernel_mod = importlib.import_module("sovereign_kernel_v2")
-        kernel = kernel_mod.SovereignKernel()
-        app.state.kernel = kernel
-        app.state.kernel_api_key_env = getattr(kernel, "api_key_env", "")
-        app.state.kernel_model_name = getattr(kernel, "model_name", "")
-    except Exception as exc:
-        app.state.startup_errors.append(f"kernel init failed: {exc}")
-
-    if not getattr(app.state, "routers_loaded", False):
-        for module_name, attr_name in (
-            ("app.controllers.routes", "router"),
-            ("app.controllers.simulation_routes", "router"),
-            ("app.controllers.cbf_routes", "router"),
-        ):
-            try:
-                module = importlib.import_module(module_name)
-                app.include_router(getattr(module, attr_name))
-            except Exception as exc:
-                app.state.startup_errors.append(f"router load failed ({module_name}): {exc}")
-        app.state.routers_loaded = True
-
-
 @app.get("/", include_in_schema=False)
 def root():
     return FileResponse("app/static/index.html")
@@ -193,6 +222,7 @@ def lex_run(payload: PraxisRunRequest):
 
 @app.get("/praxis/health")
 def praxis_health():
+    _ensure_runtime_state()
     kernel = getattr(app.state, "kernel", None)
     return {
         "status": "ok",
