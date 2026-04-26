@@ -52,6 +52,15 @@ VECTORS = [
 ]
 
 
+def _svl1_hard_rule_checks(summary: dict) -> dict[str, bool]:
+    return {
+        "failure_rate_zero": summary["failure_rate"] == 0,
+        "projection_density_gt_015": summary["projection_density_avg"] > 0.15,
+        "mean_M_avg_gt_012": summary["mean_M_avg"] > 0.12,
+        "mean_M_std_lt_005": summary["mean_M_std"] < 0.05,
+    }
+
+
 def corr(xs, ys):
     if not xs or len(xs) != len(ys):
         return 0.0
@@ -234,6 +243,9 @@ def run_sss50(kernel=None, seed=0, randomized_prompt_order=False, verbose=False)
 
 
 def run_svl1_validation(num_runs=25, enforce_assertions=True, kernel=None):
+    if num_runs <= 0:
+        raise ValueError("num_runs must be a positive integer")
+
     seeds = [i for i in range(num_runs)]
     results = []
     configured_model = (kernel.model_name if kernel else None)
@@ -283,13 +295,7 @@ def run_svl1_validation(num_runs=25, enforce_assertions=True, kernel=None):
         "failure_rate": float(sum(r["min_M"] < 0.05 for r in results) / num_runs),
     }
 
-
-    hard_rule_checks = {
-        "failure_rate_zero": summary["failure_rate"] == 0,
-        "projection_density_gt_015": summary["projection_density_avg"] > 0.15,
-        "mean_M_avg_gt_012": summary["mean_M_avg"] > 0.12,
-        "mean_M_std_lt_005": summary["mean_M_std"] < 0.05,
-    }
+    hard_rule_checks = _svl1_hard_rule_checks(summary)
     summary["hard_rule_checks"] = hard_rule_checks
     summary["passes_hard_rules"] = all(hard_rule_checks.values())
 
@@ -306,13 +312,8 @@ def run_svl1_validation(num_runs=25, enforce_assertions=True, kernel=None):
     with open("logs/svl1_runs.json", "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
 
-
     if enforce_assertions:
-        # PASS / FAIL criteria (hard rules)
-        assert summary["failure_rate"] == 0
-        assert summary["projection_density_avg"] > 0.15
-        assert summary["mean_M_avg"] > 0.12
-        assert summary["mean_M_std"] < 0.05
+        assert all(hard_rule_checks.values())
 
     return {"summary": summary, "results": results}
 
