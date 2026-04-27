@@ -65,6 +65,9 @@ jobs:
             exit 1
           )
 
+      - name: Typing Import Guard
+        run: python scripts/check_typing_imports.py
+
       - name: Test suite
         run: |
           pytest -q
