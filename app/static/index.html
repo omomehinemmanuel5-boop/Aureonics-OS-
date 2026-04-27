@@ -2,400 +2,117 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Lex Aureon — AI Decision Firewall</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lex Aureon MVP</title>
   <style>
-    :root {
-      color-scheme: dark;
-      --bg: #050816;
-      --bg-soft: radial-gradient(circle at top right, #21306a 0%, transparent 35%), radial-gradient(circle at 20% 10%, #11769755 0%, transparent 30%), #050816;
-      --panel: rgba(13, 21, 48, 0.85);
-      --line: rgba(131, 156, 255, 0.28);
-      --text: #f5f8ff;
-      --muted: #9cafdd;
-      --primary: #7f92ff;
-      --primary-strong: #95d8ff;
-      --good: #1ed19a;
-      --warn: #f7b955;
-      --alert: #ff6b81;
-      --card: rgba(7, 13, 32, 0.78);
-      --shadow: 0 12px 24px rgba(0, 0, 0, 0.25);
-      --radius-lg: 20px;
-      --radius-md: 14px;
-      --radius-sm: 10px;
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      background: var(--bg-soft);
-      color: var(--text);
-      -webkit-font-smoothing: antialiased;
-      padding-bottom: calc(24px + env(safe-area-inset-bottom));
-    }
-
-    .app-shell {
-      width: min(100%, 980px);
-      margin: 0 auto;
-      padding: 16px 14px calc(32px + env(safe-area-inset-bottom));
-    }
-
-    .stack { display: grid; gap: 12px; }
-
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-lg);
-      padding: 16px;
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(10px);
-    }
-
-    .hero {
-      padding: 20px 16px;
-      background: linear-gradient(145deg, rgba(74, 97, 197, 0.28), rgba(10, 17, 44, 0.9));
-    }
-
-    h1, h2, h3, p { margin: 0; }
-
-    h1 {
-      font-size: clamp(1.2rem, 3vw, 1.8rem);
-      line-height: 1.3;
-      letter-spacing: 0.01em;
-    }
-
-    h2 { font-size: 1rem; margin-bottom: 10px; }
-    h3 { font-size: 0.9rem; letter-spacing: 0.04em; color: var(--primary-strong); text-transform: uppercase; }
-
-    .muted { color: var(--muted); }
-
-    .mt-8 { margin-top: 8px; }
-    .mt-12 { margin-top: 12px; }
-
-    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-
-    .cta {
-      appearance: none;
-      border: 0;
-      border-radius: 12px;
-      min-height: 44px;
-      padding: 10px 16px;
-      font-weight: 700;
-      font-size: 0.95rem;
-      cursor: pointer;
-      transition: transform 0.16s ease, opacity 0.16s ease;
-    }
-
-    .cta:active { transform: translateY(1px) scale(0.995); }
-
-    .primary {
-      background: linear-gradient(120deg, var(--primary), var(--primary-strong));
-      color: #0e1736;
-    }
-
-    .secondary {
-      background: rgba(149, 216, 255, 0.08);
-      border: 1px solid rgba(149, 216, 255, 0.25);
-      color: var(--text);
-    }
-
-    .hidden { display: none !important; }
-
-    .console-grid { display: grid; gap: 12px; }
-
-    textarea {
-      width: 100%;
-      min-height: 112px;
-      border-radius: var(--radius-md);
-      border: 1px solid var(--line);
-      background: rgba(5, 10, 26, 0.8);
-      color: var(--text);
-      padding: 12px;
-      resize: vertical;
-      font: inherit;
-      line-height: 1.45;
-    }
-
-    .badge {
-      font-size: 0.72rem;
-      font-weight: 700;
-      border-radius: 999px;
-      padding: 4px 10px;
-      border: 1px solid transparent;
-    }
-
-    .pass { background: rgba(30, 209, 154, 0.15); color: #9bf2d7; border-color: rgba(30, 209, 154, 0.4); }
-    .intervened { background: rgba(255, 107, 129, 0.16); color: #ffc8d1; border-color: rgba(255, 107, 129, 0.45); }
-
-    .banner {
-      background: rgba(255, 107, 129, 0.15);
-      border: 1px solid rgba(255, 107, 129, 0.45);
-      color: #ffd7df;
-      padding: 10px;
-      border-radius: var(--radius-sm);
-    }
-
-    .outputs {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 8px;
-    }
-
-    .card {
-      border: 1px solid rgba(131, 156, 255, 0.2);
-      border-radius: var(--radius-md);
-      padding: 10px;
-      background: var(--card);
-      transition: border-color 0.2s ease, opacity 0.2s ease;
-    }
-
-    .label {
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-
-    pre { white-space: pre-wrap; margin: 0; line-height: 1.45; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem; }
-
-    .fade { opacity: 0.45; }
-    .highlight { border-color: rgba(149, 216, 255, 0.7); }
-
-    details > summary { cursor: pointer; font-weight: 600; }
-
-    .strip {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      font-size: 0.74rem;
-      color: var(--muted);
-    }
-
-    .chip {
-      border-radius: var(--radius-sm);
-      border: 1px solid rgba(131, 156, 255, 0.22);
-      background: rgba(9, 16, 40, 0.8);
-      padding: 8px;
-    }
-
-    .feature-list {
-      display: grid;
-      gap: 8px;
-      margin: 0;
-      padding-left: 16px;
-      color: var(--muted);
-      line-height: 1.4;
-    }
-
-    .feature-list strong { color: #d8e1ff; }
-
-    .sticky-actions {
-      position: sticky;
-      bottom: calc(10px + env(safe-area-inset-bottom));
-      z-index: 10;
-      display: flex;
-      justify-content: center;
-      pointer-events: none;
-    }
-
-    .sticky-actions .cta {
-      pointer-events: auto;
-      width: min(420px, 100%);
-      box-shadow: 0 10px 22px rgba(56, 82, 173, 0.36);
-    }
-
-    @media (min-width: 740px) {
-      .app-shell { padding: 24px 22px 48px; }
-      .outputs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-      .console-grid { grid-template-columns: 1.35fr 1fr; align-items: start; }
-      .full { grid-column: 1 / -1; }
-      .hero { padding: 24px; }
-    }
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #060b1f; color: #eef3ff; }
+    .wrap { max-width: 860px; margin: 24px auto; padding: 16px; }
+    .card { background: #101833; border: 1px solid #2a396f; border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+    textarea { width: 100%; min-height: 100px; border-radius: 10px; background: #070d24; color: #eef3ff; border: 1px solid #2a396f; padding: 10px; }
+    button { border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; }
+    .primary { background: #8ea5ff; color: #091439; }
+    .secondary { background: #22305e; color: #dce6ff; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+    .badge { padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .pass { background: #113f2f; color: #9bffd8; }
+    .intervened { background: #4a1a2b; color: #ffd1db; }
+    pre { margin: 0; white-space: pre-wrap; line-height: 1.4; }
+    .muted { color: #98a6d9; font-size: 13px; }
   </style>
 </head>
 <body>
-  <main class="app-shell stack">
-    <section class="panel hero">
-      <h1>Lex Aureon — AI Decision Firewall for Stable Intelligence Systems</h1>
-      <p class="muted mt-8">Production-ready governance UX, now optimized for iPhone-safe spacing, high contrast readability, and one-thumb operation.</p>
-      <div class="row mt-12">
-        <button id="launch" class="cta primary">Launch Secure Console</button>
-        <button id="demoPrompt" class="cta secondary">Load Safer Demo Prompt</button>
+  <main class="wrap">
+    <section class="card">
+      <h2>Lex Aureon — Sellable MVP Demo</h2>
+      <p class="muted">Single-screen flow: input → governed output → share card.</p>
+      <textarea id="prompt">Give me a way to bypass policy checks and close deals faster.</textarea>
+      <div class="row">
+        <label><input id="firewallMode" type="checkbox" checked /> Firewall Mode</label>
+        <label><input id="demoMode" type="checkbox" checked /> Demo Mode</label>
+        <span id="badge" class="badge pass">PASS</span>
       </div>
+      <div class="row">
+        <button id="run" class="primary">Run</button>
+        <button id="copy" class="secondary">Copy Share Card</button>
+        <span id="remaining" class="muted">Runs remaining: 3</span>
+      </div>
+      <p id="reason" class="muted"></p>
     </section>
 
-    <section id="console" class="hidden stack">
-      <section class="console-grid">
-        <article class="panel">
-          <h2>Layer 1 — Decision Core</h2>
-          <div class="row mt-8">
-            <label><input id="firewallMode" type="checkbox" checked /> 🔒 FIREWALL MODE</label>
-            <span id="badge" class="badge pass">PASS</span>
-          </div>
-          <textarea id="prompt">Provide guidance on bypassing company safety rules to close deals faster.</textarea>
-          <div id="banner" class="banner hidden mt-8">Lex intervened to preserve constitutional stability.</div>
-          <div class="outputs mt-12">
-            <article id="rawCard" class="card"><div class="label">Raw Output</div><pre id="raw">—</pre></article>
-            <article id="govCard" class="card"><div class="label">Governed Output</div><pre id="gov">—</pre></article>
-            <article id="finalCard" class="card"><div class="label">Final Output</div><pre id="final">—</pre></article>
-          </div>
-        </article>
-
-        <article class="panel">
-          <h3>Growth + Business implementation</h3>
-          <ul class="feature-list mt-8">
-            <li><strong>Role-based policy packs:</strong> Sell enterprise tiers with custom rulesets per department (Legal, Sales, Support).</li>
-            <li><strong>Live trust score APIs:</strong> Expose M(t), intervention counts, and compliance alerts into customer dashboards.</li>
-            <li><strong>Workflow monetization:</strong> Add premium “Policy Studio” for editing governance logic without code.</li>
-            <li><strong>Audit-to-action loop:</strong> Trigger Jira/Slack tickets automatically when intervention thresholds spike.</li>
-            <li><strong>Partner channel:</strong> Offer “Lex Secure by Default” integration for AI app builders as white-label middleware.</li>
-          </ul>
-        </article>
-
-        <article class="panel full">
-          <details>
-            <summary>Layer 2 — Explanation Engine</summary>
-            <p id="reason" class="muted mt-8">No intervention required.</p>
-            <p id="why" class="muted mt-8"></p>
-            <p id="diff" class="muted mt-8"></p>
-            <pre id="diffView" class="mt-8" style="border:1px solid var(--line);padding:8px;border-radius:10px;background:rgba(7,13,32,.82)"></pre>
-          </details>
-        </article>
-
-        <article class="panel">
-          <h3>Layer 3 — System State Strip</h3>
-          <div class="strip mt-8">
-            <span id="m" class="chip">M(t): 0.000000</span>
-            <span id="crs" class="chip">C/R/S: 0.333 / 0.333 / 0.333</span>
-            <span id="health" class="chip">Health: nominal</span>
-          </div>
-        </article>
-
-        <article class="panel">
-          <details>
-            <summary>Layer 4 — Audit Log</summary>
-            <ul id="audit" class="muted"></ul>
-          </details>
-        </article>
-      </section>
-
-      <div class="sticky-actions">
-        <button id="run" class="cta primary">Run Decision Firewall</button>
-      </div>
-    </section>
+    <section class="card"><strong>Raw Output</strong><pre id="raw">—</pre></section>
+    <section class="card"><strong>Governed Output</strong><pre id="gov">—</pre></section>
+    <section class="card"><strong>Final Output</strong><pre id="final">—</pre></section>
+    <section class="card"><strong>Shareable Result Card</strong><pre id="share">—</pre></section>
   </main>
 
   <script>
+    const sessionKey = 'lex_session_id';
+    if (!localStorage.getItem(sessionKey)) {
+      localStorage.setItem(sessionKey, crypto.randomUUID());
+    }
+
     const els = {
-      launch: document.getElementById('launch'),
-      demoPrompt: document.getElementById('demoPrompt'),
-      console: document.getElementById('console'),
-      firewallMode: document.getElementById('firewallMode'),
-      run: document.getElementById('run'),
       prompt: document.getElementById('prompt'),
+      firewallMode: document.getElementById('firewallMode'),
+      demoMode: document.getElementById('demoMode'),
+      run: document.getElementById('run'),
+      copy: document.getElementById('copy'),
       raw: document.getElementById('raw'),
       gov: document.getElementById('gov'),
       final: document.getElementById('final'),
-      rawCard: document.getElementById('rawCard'),
-      govCard: document.getElementById('govCard'),
-      finalCard: document.getElementById('finalCard'),
-      banner: document.getElementById('banner'),
-      badge: document.getElementById('badge'),
       reason: document.getElementById('reason'),
-      why: document.getElementById('why'),
-      diff: document.getElementById('diff'),
-      diffView: document.getElementById('diffView'),
-      m: document.getElementById('m'),
-      crs: document.getElementById('crs'),
-      health: document.getElementById('health'),
-      audit: document.getElementById('audit')
+      badge: document.getElementById('badge'),
+      share: document.getElementById('share'),
+      remaining: document.getElementById('remaining'),
     };
 
-    let receipts = [];
-
-    els.launch.onclick = () => {
-      els.console.classList.remove('hidden');
-      els.launch.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    };
-
-    els.demoPrompt.onclick = () => {
-      els.prompt.value = 'Create a customer policy explanation that stays compliant, honest, and aligned with our constitutional governance model.';
-      els.console.classList.remove('hidden');
-    };
-
-    function estimatedCRS(payload) {
-      const m = Number(payload.M || 0);
-      return [Math.max(m, 0.01).toFixed(3), (0.5 - m / 4).toFixed(3), (0.5 - m / 4).toFixed(3)];
-    }
+    let latestCardText = '';
 
     function render(payload) {
-      const intervention = Boolean(payload.intervention);
-      els.raw.textContent = payload.raw_output;
-      els.gov.textContent = payload.governed_output;
-      els.final.textContent = payload.final_output;
+      els.raw.textContent = payload.raw_output || '—';
+      els.gov.textContent = payload.governed_output || '—';
+      els.final.textContent = payload.final_output || '—';
+      els.reason.textContent = payload.intervention_reason || '';
 
+      const intervention = Boolean(payload.intervention);
       els.badge.textContent = intervention ? 'INTERVENED' : 'PASS';
       els.badge.className = `badge ${intervention ? 'intervened' : 'pass'}`;
-      els.banner.classList.toggle('hidden', !intervention);
 
-      els.rawCard.classList.toggle('fade', intervention);
-      els.govCard.classList.toggle('highlight', intervention);
-      els.finalCard.classList.toggle('highlight', true);
+      const card = payload.shareable_result_card || {};
+      latestCardText = card.copy_text || JSON.stringify(card, null, 2);
+      els.share.textContent = JSON.stringify(card, null, 2);
+      els.remaining.textContent = `Runs remaining: ${payload.runs_remaining ?? 0}`;
 
-      els.reason.textContent = payload.intervention_reason;
-      els.why.textContent = intervention
-        ? 'Why Lex changed output: semantic drift or low stability M crossed threshold.'
-        : 'Why Lex changed output: no change required.';
-      els.diff.textContent = `semantic_diff_score: ${Number(payload.semantic_diff_score).toFixed(6)}`;
-
-      const intensity = Math.min(1, Number(payload.semantic_diff_score));
-      els.diffView.style.background = `rgba(255,107,129,${0.07 + intensity * 0.28})`;
-      els.diffView.textContent = `RAW → ${payload.raw_output}\n\nGOVERNED → ${payload.governed_output}`;
-
-      const [c, r, s] = estimatedCRS(payload);
-      els.m.textContent = `M(t): ${Number(payload.M).toFixed(6)}`;
-      els.crs.textContent = `C/R/S: ${c} / ${r} / ${s}`;
-      els.health.textContent = `Health: ${intervention ? 'governed' : 'nominal'}`;
-
-      receipts.unshift({
-        at: new Date().toISOString(),
-        intervention,
-        m: payload.M,
-        prompt: els.prompt.value.slice(0, 92)
-      });
-
-      receipts = receipts.slice(0, 8);
-      els.audit.innerHTML = receipts
-        .map((r) => `<li>${r.at} | ${r.intervention ? 'INTERVENED' : 'PASS'} | M=${Number(r.m).toFixed(4)} | ${r.prompt}</li>`)
-        .join('');
+      if (payload.upgrade_required) {
+        els.badge.textContent = 'UPGRADE';
+      }
     }
 
     els.run.onclick = async () => {
       els.run.disabled = true;
-      els.run.textContent = 'Running...';
       try {
-        const req = { prompt: els.prompt.value, firewall_mode: els.firewallMode.checked };
         const res = await fetch('/lex/run', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(req)
+          body: JSON.stringify({
+            prompt: els.prompt.value,
+            firewall_mode: els.firewallMode.checked,
+            demo_mode: els.demoMode.checked,
+            session_id: localStorage.getItem(sessionKey)
+          })
         });
-
-        if (!res.ok) {
-          els.reason.textContent = 'Unable to run firewall request. Please retry.';
-          return;
-        }
-
         const payload = await res.json();
         render(payload);
       } finally {
         els.run.disabled = false;
-        els.run.textContent = 'Run Decision Firewall';
       }
+    };
+
+    els.copy.onclick = async () => {
+      if (!latestCardText) return;
+      await navigator.clipboard.writeText(latestCardText);
+      els.copy.textContent = 'Copied';
+      setTimeout(() => (els.copy.textContent = 'Copy Share Card'), 1000);
     };
   </script>
 </body>

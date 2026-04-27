@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
 from lex_memory.engine import classify_state, run_memory_pipeline
+from app.safe_boot import load_kernel_safely, load_router_safely
 
 kernel = None
 
@@ -27,6 +28,8 @@ def _ensure_runtime_state() -> None:
         app.state.startup_errors = []
     if not hasattr(app.state, "mock_traces"):
         app.state.mock_traces = []
+    if not hasattr(app.state, "run_counts"):
+        app.state.run_counts = {}
 
 
 def _load_runtime_dependencies() -> None:
@@ -39,12 +42,11 @@ def _load_runtime_dependencies() -> None:
     except Exception as exc:
         app.state.startup_errors.append(f"database init failed: {exc}")
 
-    try:
-        kernel_mod = importlib.import_module("sovereign_kernel_v2")
-        kernel = kernel_mod.SovereignKernel()
-        app.state.kernel = kernel
-    except Exception as exc:
-        app.state.startup_errors.append(f"kernel init failed: {exc}")
+    kernel_result = load_kernel_safely()
+    kernel = kernel_result.get("kernel")
+    app.state.kernel = kernel
+    if not kernel_result.get("ok") and kernel_result.get("error"):
+        app.state.startup_errors.append(str(kernel_result.get("error")))
 
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
@@ -71,11 +73,21 @@ app.add_middleware(
 )
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+for module_path in ("app.controllers.routes", "app.controllers.simulation_routes", "app.controllers.cbf_routes"):
+    route_result = load_router_safely(module_path)
+    if route_result.get("ok") and route_result.get("router") is not None:
+        app.include_router(route_result.get("router"))
+    elif route_result.get("error"):
+        _ensure_runtime_state()
+        app.state.startup_errors.append(str(route_result.get("error")))
+
 
 class RunRequest(BaseModel):
     prompt: str
     firewall_mode: bool = True
     bridge: Optional[bool] = None
+    demo_mode: bool = False
+    session_id: Optional[str] = None
 
 
 class DecisionResponse(BaseModel):
@@ -88,6 +100,9 @@ class DecisionResponse(BaseModel):
     intervention_reason: str
     semantic_diff_score: float
     M: float
+    shareable_result_card: dict
+    upgrade_required: bool = False
+    runs_remaining: int = 0
 
 
 class TraceMetrics(BaseModel):
@@ -181,9 +196,85 @@ def _govern_text(raw: str) -> tuple[str, str]:
     return raw, "No intervention required; output met constitutional stability."
 
 
+
+
+def _client_run_key(payload: RunRequest) -> str:
+    session = (payload.session_id or "").strip()
+    if session:
+        return f"session:{session}"
+    return "session:anonymous"
+
+
+def _build_share_card(prompt: str, decision: dict) -> dict:
+    return {
+        "title": "Lex Aureon Result Card",
+        "prompt": prompt.strip(),
+        "badge": "INTERVENED" if decision["intervention"] else "PASS",
+        "intervention": bool(decision["intervention"]),
+        "intervention_reason": decision["intervention_reason"],
+        "M": round(float(decision["M"]), 6),
+        "semantic_diff_score": round(float(decision["semantic_diff_score"]), 6),
+        "raw_output": decision["raw_output"],
+        "final_output": decision["final_output"],
+        "copy_text": (
+            f"Lex Aureon | {('INTERVENED' if decision['intervention'] else 'PASS')}\n"
+            f"Prompt: {prompt.strip()}\n"
+            f"Final: {decision['final_output']}\n"
+            f"M: {round(float(decision['M']), 6)}"
+        ),
+    }
+
+
+def _enforce_free_limit(payload: RunRequest) -> tuple[bool, int]:
+    _ensure_runtime_state()
+    free_limit = int(os.getenv("LEX_FREE_RUN_LIMIT", "3"))
+    key = _client_run_key(payload)
+    current = int(app.state.run_counts.get(key, 0))
+    if current >= free_limit:
+        return True, 0
+    current += 1
+    app.state.run_counts[key] = current
+    return False, max(0, free_limit - current)
+
+
+def _demo_override(payload: RunRequest) -> tuple[str, str, bool, str] | None:
+    demo_enabled = payload.demo_mode or os.getenv("LEX_DEMO_MODE", "false").lower() == "true"
+    if not demo_enabled:
+        return None
+    raw = (
+        "Unsafe draft: bypass approval gates and hide policy exceptions to accelerate conversion."
+    )
+    governed = (
+        "Approved draft: follow policy-safe selling steps, disclose constraints, and escalate through official review."
+    )
+    return raw, governed, True, "Demo mode intervention: deterministic governed rewrite for sales preview."
+
 def _run_pipeline(payload: RunRequest) -> DecisionResponse:
-    raw_output = _generate_raw_output(payload.prompt)
-    governed_output, reason = _govern_text(raw_output)
+    upgrade_required, runs_remaining = _enforce_free_limit(payload)
+    if upgrade_required:
+        base = {
+            "raw_output": "",
+            "governed_output": "",
+            "final_output": "Upgrade required: free tier limit reached (3 runs).",
+            "intervention": False,
+            "intervention_reason": "Free tier exhausted. Upgrade to continue running Lex Aureon.",
+            "semantic_diff_score": 0.0,
+            "M": 0.0,
+        }
+        return DecisionResponse(
+            **base,
+            shareable_result_card=_build_share_card(payload.prompt, base),
+            upgrade_required=True,
+            runs_remaining=0,
+        )
+
+    demo = _demo_override(payload)
+    if demo is None:
+        raw_output = _generate_raw_output(payload.prompt)
+        governed_output, reason = _govern_text(raw_output)
+        intervention_seed = None
+    else:
+        raw_output, governed_output, intervention_seed, reason = demo
 
     semantic_diff_score = _semantic_diff_score(raw_output, governed_output)
     crs = _normalized_crs(payload.prompt, raw_output, governed_output)
@@ -191,6 +282,8 @@ def _run_pipeline(payload: RunRequest) -> DecisionResponse:
     m_val = round(min(crs.values()), 6)
 
     intervention = semantic_diff_score > 0.12 or m_val < tau
+    if intervention_seed is not None:
+        intervention = bool(intervention_seed)
     if not payload.firewall_mode:
         intervention = False
         reason = "Firewall mode OFF; pass-through enforced."
@@ -222,14 +315,20 @@ def _run_pipeline(payload: RunRequest) -> DecisionResponse:
         except Exception as exc:
             app.state.startup_errors.append(f"lex memory write failed: {exc}")
 
+    base_decision = {
+        "raw_output": raw_output,
+        "governed_output": governed_output,
+        "final_output": final_output,
+        "intervention": intervention,
+        "intervention_reason": reason,
+        "semantic_diff_score": semantic_diff_score,
+        "M": m_val,
+    }
     return DecisionResponse(
-        raw_output=raw_output,
-        governed_output=governed_output,
-        final_output=final_output,
-        intervention=intervention,
-        intervention_reason=reason,
-        semantic_diff_score=semantic_diff_score,
-        M=m_val,
+        **base_decision,
+        shareable_result_card=_build_share_card(payload.prompt, base_decision),
+        upgrade_required=False,
+        runs_remaining=runs_remaining,
     )
 
 
