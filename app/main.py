@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
 from lex_memory.engine import classify_state, run_memory_pipeline
-from app.safe_boot import load_kernel_safely, load_router_safely
+from app.safe_boot import load_kernel_safely, load_router_safely, load_supabase_safely
 
 kernel = None
 
@@ -47,27 +47,29 @@ def _load_runtime_dependencies() -> None:
     except Exception as exc:
         app.state.startup_errors.append(f"database init failed: {exc}")
 
-    kernel_instance, kernel_error = safe_build_kernel()
-    if kernel_error:
-        app.state.startup_errors.append(kernel_error)
-    kernel = kernel_instance
-    app.state.kernel = kernel_instance
+    kernel_result = load_kernel_safely()
+    if kernel_result.get("error"):
+        app.state.startup_errors.append(str(kernel_result.get("error")))
+    kernel = kernel_result.get("kernel")
+    app.state.kernel = kernel
 
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
     if supabase_url and supabase_key:
-        supabase_client, supabase_error = safe_supabase_client(supabase_url, supabase_key)
-        app.state.supabase = supabase_client
-        if supabase_error:
-            app.state.startup_errors.append(supabase_error)
+        supabase_result = load_supabase_safely(supabase_url, supabase_key)
+        app.state.supabase = supabase_result.get("client")
+        if supabase_result.get("error"):
+            app.state.startup_errors.append(str(supabase_result.get("error")))
 
     if not app.state.routers_loaded:
         for module_name in ("app.controllers.routes", "app.controllers.simulation_routes", "app.controllers.cbf_routes"):
-            router, router_error = safe_router(module_name)
-            if router_error:
-                app.state.startup_errors.append(router_error)
+            route_result = load_router_safely(module_name)
+            if route_result.get("error"):
+                app.state.startup_errors.append(str(route_result.get("error")))
                 continue
-            app.include_router(router)
+            router = route_result.get("router")
+            if router is not None:
+                app.include_router(router)
         app.state.routers_loaded = True
 
 
@@ -285,6 +287,7 @@ def _run_pipeline(payload: RunRequest, request: Request) -> DecisionResponse:
     m_val = round(min(crs.values()), 6)
 
     intervention = semantic_diff_score > 0.12 or m_val < tau
+    intervention_seed = payload.bridge
     if intervention_seed is not None:
         intervention = bool(intervention_seed)
     if not payload.firewall_mode:
