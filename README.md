@@ -17,6 +17,17 @@ This README is split into:
 
 ---
 
+## Architecture Freeze (April 27, 2026)
+
+To keep execution disciplined, the architecture and sequencing are formally frozen:
+
+- `docs/ARCHITECTURE_FREEZE_2026-04-27.md`
+- `docs/NEXT_STEP_PLAN.md`
+
+These documents define what to build now (and what not to build yet).
+
+---
+
 ## SECTION A — THEORY (AUREONICS)
 
 ### 2.1 Core Idea
