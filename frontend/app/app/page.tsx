@@ -5,11 +5,12 @@ export default function AppDashboardPage() {
   return (
     <section className="section-pad">
       <div className="container-shell space-y-6">
-        <div className="rounded-xl2 border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          Free tier reached? <Link href="/pricing" className="underline">Upgrade to unlock higher daily runs.</Link>
+        <div className="rounded-xl2 glass-panel glow-border p-4 text-sm text-slate-300">
+          <span className="font-semibold text-cyan-200">Constitutional Console:</span> run prompts, inspect raw/governed/final outputs, and view stability math in real time.
+          <span className="ml-2">Need more capacity? <Link href="/pricing" className="text-cyan-300 underline">Upgrade your plan</Link>.</span>
         </div>
-        <h1 className="text-3xl font-semibold tracking-tight">Lex Dashboard</h1>
-        <p className="text-slate-600">PromptBox + output panels + metrics for paying users.</p>
+        <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Aureonics Sovereign Console</h1>
+        <p className="text-slate-300">Interactive glowing controls + mathematical traces to explain every intervention decision.</p>
         <DemoWorkbench mode="app" />
       </div>
     </section>
