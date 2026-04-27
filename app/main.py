@@ -5,9 +5,10 @@ import importlib
 import os
 import sqlite3
 import uuid
+from uuid import uuid4
 from collections import deque
 from difflib import SequenceMatcher
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -369,6 +370,33 @@ def _to_canonical_trace(payload: RunRequest, decision: DecisionResponse) -> dict
         },
     }
     return trace
+
+
+def _normalize_trace_row(row: dict[str, Any]) -> dict[str, Any]:
+    c_val = float(row.get("C", row.get("c", 0.0)) or 0.0)
+    r_val = float(row.get("R", row.get("r", 0.0)) or 0.0)
+    s_val = float(row.get("S", row.get("s", 0.0)) or 0.0)
+    m_val = float(row.get("M", row.get("m", 0.0)) or 0.0)
+    intervened = bool(row.get("intervention", row.get("intervened", False)))
+    return {
+        "id": str(row.get("id")),
+        "createdAt": row.get("created_at") or row.get("createdAt") or datetime.now(timezone.utc).isoformat(),
+        "prompt": str(row.get("prompt", "")),
+        "raw": str(row.get("response_raw", row.get("raw", ""))),
+        "governed": str(row.get("response_governed", row.get("governed", ""))),
+        "final": str(row.get("response_final", row.get("final", ""))),
+        "reason": str(row.get("intervention_reason", row.get("reason", ""))),
+        "metrics": {
+            "M": m_val,
+            "C": c_val,
+            "R": r_val,
+            "S": s_val,
+            "ADV": round((c_val + r_val + s_val) / 3.0, 6),
+            "semanticDiff": float(row.get("semantic_diff_score", row.get("semanticDiff", 0.0)) or 0.0),
+            "intervened": intervened,
+            "health": _health_label(intervened, m_val),
+        },
+    }
 
 
 @app.get("/", include_in_schema=False)
