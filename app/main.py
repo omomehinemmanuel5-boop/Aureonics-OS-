@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
 from lex_memory.engine import classify_state, run_memory_pipeline
-from app.safe_boot import safe_build_kernel, safe_router, safe_supabase_client
+from app.safe_boot import load_kernel_safely, load_router_safely
 
 kernel = None
 
@@ -85,6 +85,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+for module_path in ("app.controllers.routes", "app.controllers.simulation_routes", "app.controllers.cbf_routes"):
+    route_result = load_router_safely(module_path)
+    if route_result.get("ok") and route_result.get("router") is not None:
+        app.include_router(route_result.get("router"))
+    elif route_result.get("error"):
+        _ensure_runtime_state()
+        app.state.startup_errors.append(str(route_result.get("error")))
 
 
 class RunRequest(BaseModel):
@@ -277,6 +285,8 @@ def _run_pipeline(payload: RunRequest, request: Request) -> DecisionResponse:
     m_val = round(min(crs.values()), 6)
 
     intervention = semantic_diff_score > 0.12 or m_val < tau
+    if intervention_seed is not None:
+        intervention = bool(intervention_seed)
     if not payload.firewall_mode:
         intervention = False
         reason = "Firewall mode OFF; pass-through enforced."
@@ -315,6 +325,15 @@ def _run_pipeline(payload: RunRequest, request: Request) -> DecisionResponse:
         except Exception as exc:
             app.state.startup_errors.append(f"lex memory write failed: {exc}")
 
+    base_decision = {
+        "raw_output": raw_output,
+        "governed_output": governed_output,
+        "final_output": final_output,
+        "intervention": intervention,
+        "intervention_reason": reason,
+        "semantic_diff_score": semantic_diff_score,
+        "M": m_val,
+    }
     return DecisionResponse(
         raw_output=raw_output,
         governed_output=governed_output,

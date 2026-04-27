@@ -5,91 +5,114 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Lex Aureon MVP</title>
   <style>
-    :root { color-scheme: dark; --bg:#070b1d; --panel:#101833; --line:#2a3a71; --text:#f1f5ff; --muted:#9fb0dd; --primary:#89a6ff; }
-    * { box-sizing: border-box; }
-    body { margin:0; font-family: Inter, system-ui, sans-serif; background: var(--bg); color: var(--text); }
-    .wrap { max-width: 860px; margin: 0 auto; padding: 20px; }
-    .panel { background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; }
-    h1 { margin:0 0 8px; font-size:1.35rem; }
-    p { margin:0; color: var(--muted); }
-    textarea { width:100%; min-height:120px; margin-top:12px; border-radius:10px; border:1px solid var(--line); background:#060b22; color:var(--text); padding:10px; }
-    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px; }
-    button { border:0; border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer; }
-    .primary { background:var(--primary); color:#0b1436; }
-    .secondary { background:#1a254f; color:var(--text); border:1px solid var(--line); }
-    .badge { margin-left:auto; border-radius:999px; padding:4px 10px; border:1px solid var(--line); font-size:.78rem; }
-    .grid { display:grid; gap:10px; margin-top:12px; }
-    .card { border:1px solid var(--line); border-radius:10px; padding:10px; background:#0b1230; }
-    pre { white-space:pre-wrap; margin:6px 0 0; font-size:.88rem; }
-    .muted { color:var(--muted); font-size:.86rem; }
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #060b1f; color: #eef3ff; }
+    .wrap { max-width: 860px; margin: 24px auto; padding: 16px; }
+    .card { background: #101833; border: 1px solid #2a396f; border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+    textarea { width: 100%; min-height: 100px; border-radius: 10px; background: #070d24; color: #eef3ff; border: 1px solid #2a396f; padding: 10px; }
+    button { border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; }
+    .primary { background: #8ea5ff; color: #091439; }
+    .secondary { background: #22305e; color: #dce6ff; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+    .badge { padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .pass { background: #113f2f; color: #9bffd8; }
+    .intervened { background: #4a1a2b; color: #ffd1db; }
+    pre { margin: 0; white-space: pre-wrap; line-height: 1.4; }
+    .muted { color: #98a6d9; font-size: 13px; }
   </style>
 </head>
 <body>
   <main class="wrap">
-    <section class="panel">
-      <h1>Lex Aureon — Sellable MVP</h1>
-      <p>Single-screen demo. Input, outputs, compliance badge, and screenshot-ready result card.</p>
-      <textarea id="prompt">Provide guidance on bypassing company safety rules to close deals faster.</textarea>
+    <section class="card">
+      <h2>Lex Aureon — Sellable MVP Demo</h2>
+      <p class="muted">Single-screen flow: input → governed output → share card.</p>
+      <textarea id="prompt">Give me a way to bypass policy checks and close deals faster.</textarea>
       <div class="row">
-        <label><input id="firewallMode" type="checkbox" checked /> Firewall mode</label>
-        <label><input id="demoMode" type="checkbox" checked /> Demo mode</label>
-        <button id="demoPrompt" class="secondary">Load Demo</button>
+        <label><input id="firewallMode" type="checkbox" checked /> Firewall Mode</label>
+        <label><input id="demoMode" type="checkbox" checked /> Demo Mode</label>
+        <span id="badge" class="badge pass">PASS</span>
+      </div>
+      <div class="row">
         <button id="run" class="primary">Run</button>
-        <span id="badge" class="badge">PASS</span>
+        <button id="copy" class="secondary">Copy Share Card</button>
+        <span id="remaining" class="muted">Runs remaining: 3</span>
       </div>
-      <p id="freeRuns" class="muted" style="margin-top:8px;">Free runs remaining: 3</p>
-
-      <section class="grid">
-        <article class="card"><strong>Raw Output</strong><pre id="raw">—</pre></article>
-        <article class="card"><strong>Governed Output</strong><pre id="gov">—</pre></article>
-        <article class="card"><strong>Final Output</strong><pre id="final">—</pre></article>
-        <article class="card"><strong>Reason</strong><pre id="reason">No run yet.</pre></article>
-        <article class="card"><strong>Shareable Result Card (JSON)</strong><pre id="shareable">—</pre></article>
-      </section>
-      <div class="row">
-        <button id="copyCard" class="secondary">Copy Result Card</button>
-      </div>
+      <p id="reason" class="muted"></p>
     </section>
+
+    <section class="card"><strong>Raw Output</strong><pre id="raw">—</pre></section>
+    <section class="card"><strong>Governed Output</strong><pre id="gov">—</pre></section>
+    <section class="card"><strong>Final Output</strong><pre id="final">—</pre></section>
+    <section class="card"><strong>Shareable Result Card</strong><pre id="share">—</pre></section>
   </main>
 
   <script>
+    const sessionKey = 'lex_session_id';
+    if (!localStorage.getItem(sessionKey)) {
+      localStorage.setItem(sessionKey, crypto.randomUUID());
+    }
+
     const els = {
-      prompt: document.getElementById('prompt'), firewallMode: document.getElementById('firewallMode'), demoMode: document.getElementById('demoMode'),
-      demoPrompt: document.getElementById('demoPrompt'), run: document.getElementById('run'), badge: document.getElementById('badge'), freeRuns: document.getElementById('freeRuns'),
-      raw: document.getElementById('raw'), gov: document.getElementById('gov'), final: document.getElementById('final'), reason: document.getElementById('reason'),
-      shareable: document.getElementById('shareable'), copyCard: document.getElementById('copyCard')
+      prompt: document.getElementById('prompt'),
+      firewallMode: document.getElementById('firewallMode'),
+      demoMode: document.getElementById('demoMode'),
+      run: document.getElementById('run'),
+      copy: document.getElementById('copy'),
+      raw: document.getElementById('raw'),
+      gov: document.getElementById('gov'),
+      final: document.getElementById('final'),
+      reason: document.getElementById('reason'),
+      badge: document.getElementById('badge'),
+      share: document.getElementById('share'),
+      remaining: document.getElementById('remaining'),
     };
 
-    els.demoPrompt.onclick = () => { els.prompt.value = 'Show intervention scenario for policy bypass request.'; els.demoMode.checked = true; };
+    let latestCardText = '';
 
     function render(payload) {
-      els.raw.textContent = payload.raw_output;
-      els.gov.textContent = payload.governed_output;
-      els.final.textContent = payload.final_output;
-      els.reason.textContent = payload.intervention_reason;
-      els.badge.textContent = payload.shareable_result_card?.badge || (payload.intervention ? 'INTERVENED' : 'PASS');
-      els.freeRuns.textContent = `Free runs remaining: ${payload.remaining_free_runs}`;
-      els.shareable.textContent = JSON.stringify(payload.shareable_result_card, null, 2);
+      els.raw.textContent = payload.raw_output || '—';
+      els.gov.textContent = payload.governed_output || '—';
+      els.final.textContent = payload.final_output || '—';
+      els.reason.textContent = payload.intervention_reason || '';
+
+      const intervention = Boolean(payload.intervention);
+      els.badge.textContent = intervention ? 'INTERVENED' : 'PASS';
+      els.badge.className = `badge ${intervention ? 'intervened' : 'pass'}`;
+
+      const card = payload.shareable_result_card || {};
+      latestCardText = card.copy_text || JSON.stringify(card, null, 2);
+      els.share.textContent = JSON.stringify(card, null, 2);
+      els.remaining.textContent = `Runs remaining: ${payload.runs_remaining ?? 0}`;
+
+      if (payload.upgrade_required) {
+        els.badge.textContent = 'UPGRADE';
+      }
     }
 
     els.run.onclick = async () => {
       els.run.disabled = true;
       try {
-        const req = { prompt: els.prompt.value, firewall_mode: els.firewallMode.checked, demo_mode: els.demoMode.checked };
-        const res = await fetch('/lex/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
-        if (!res.ok) { els.reason.textContent = 'Request failed.'; return; }
-        render(await res.json());
-      } finally { els.run.disabled = false; }
+        const res = await fetch('/lex/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: els.prompt.value,
+            firewall_mode: els.firewallMode.checked,
+            demo_mode: els.demoMode.checked,
+            session_id: localStorage.getItem(sessionKey)
+          })
+        });
+        const payload = await res.json();
+        render(payload);
+      } finally {
+        els.run.disabled = false;
+      }
     };
 
-    els.copyCard.onclick = async () => {
-      try {
-        await navigator.clipboard.writeText(els.shareable.textContent);
-        els.copyCard.textContent = 'Copied!';
-        setTimeout(() => { els.copyCard.textContent = 'Copy Result Card'; }, 1200);
-      } catch (_) {
-        els.copyCard.textContent = 'Copy unavailable';
-      }
+    els.copy.onclick = async () => {
+      if (!latestCardText) return;
+      await navigator.clipboard.writeText(latestCardText);
+      els.copy.textContent = 'Copied';
+      setTimeout(() => (els.copy.textContent = 'Copy Share Card'), 1000);
     };
   </script>
 </body>
