@@ -4,9 +4,9 @@ export function OutputPanels({ result }: { result: LexResponse | null }) {
   if (!result) return null;
 
   const panels = [
-    ['Raw Output', result.raw_output, 'border-slate-300/20'],
-    ['Governed Output', result.governed_output, 'border-amber-300/30'],
-    ['Final Output', result.final_output, 'border-emerald-300/30']
+    ['Base LLM Raw Output', result.raw_output, 'border-slate-300/20'],
+    ['Governed Trajectory', result.governed_output, 'border-amber-300/30'],
+    ['Final Response', result.final_output, 'border-emerald-300/30']
   ] as const;
 
   return (

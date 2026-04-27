@@ -3,15 +3,15 @@ import { LexResponse } from '@/lib/types';
 export function MetricsBar({ result }: { result: LexResponse | null }) {
   if (!result) return null;
 
-  const safety = Math.min(1, Math.max(0, Number(result.M) || 0));
+  const entropySacrifice = Math.max(0, Math.min(1, Number(result.semantic_diff_score) || 0));
+  const preservedMeaning = Math.max(0, 1 - entropySacrifice);
 
   return (
-    <div className="grid gap-3 md:grid-cols-5">
-      <Metric label="Intervention" value={result.intervention ? 'PROJECTED' : 'CLEAR'} accent="text-amber-200" progress={result.intervention ? 0.84 : 0.22} />
-      <Metric label="Stability M(t)" value={result.M.toFixed(4)} accent="text-emerald-200" progress={safety} />
-      <Metric label="Semantic Δ" value={result.semantic_diff_score.toFixed(4)} accent="text-cyan-200" progress={Math.min(1, result.semantic_diff_score)} />
-      <Metric label="Governor Reason" value={result.intervention_reason} accent="text-violet-200" progress={0.7} />
-      <Metric label="Constitutional Gate" value={safety >= 0.05 ? 'PASS' : 'HOLD'} accent={safety >= 0.05 ? 'text-emerald-200' : 'text-rose-200'} progress={safety >= 0.05 ? 1 : 0.2} />
+    <div className="grid gap-3 md:grid-cols-4">
+      <Metric label="Governor" value={result.intervention ? 'INTERVENED' : 'NO INTERVENTION'} accent={result.intervention ? 'text-amber-200' : 'text-emerald-200'} progress={result.intervention ? 0.86 : 0.24} />
+      <Metric label="Raw → Governed" value={result.intervention ? 'Trajectory redirected' : 'Trajectory preserved'} accent="text-cyan-200" progress={result.intervention ? 0.78 : 0.18} />
+      <Metric label="Meaning Preserved" value={`${Math.round(preservedMeaning * 100)}%`} accent="text-violet-200" progress={preservedMeaning} />
+      <Metric label="Entropy Sacrificed" value={`${Math.round(entropySacrifice * 100)}%`} accent="text-rose-200" progress={entropySacrifice} />
     </div>
   );
 }
