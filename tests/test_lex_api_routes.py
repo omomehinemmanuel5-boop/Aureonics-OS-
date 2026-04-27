@@ -6,38 +6,41 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_post_trace_returns_canonical_shape():
-    payload = {"prompt": "Explain policy drift.", "firewall_mode": True}
-    response = client.post("/api/lex/trace", json=payload)
-
+def test_lex_run_contract_shape():
+    response = client.post("/lex/run", json={"prompt": "Explain policy drift.", "firewall_mode": True})
     assert response.status_code == 200
+
     data = response.json()
-    assert {"id", "createdAt", "prompt", "raw", "governed", "final", "reason", "metrics"}.issubset(data.keys())
-    assert {"M", "C", "R", "S", "ADV", "semanticDiff", "intervened", "health"}.issubset(
-        data["metrics"].keys()
-    )
+    expected = {
+        "raw_output",
+        "governed_output",
+        "final_output",
+        "intervention",
+        "intervention_reason",
+        "semantic_diff_score",
+        "M",
+    }
+    assert expected.issubset(data.keys())
 
 
-def test_trace_metrics_audit_and_policies_routes():
-    create_resp = client.post("/api/lex/trace", json={"prompt": "safe prompt"})
-    trace_id = create_resp.json()["id"]
+def test_health_pricing_demo_and_checkout_stub():
+    health_resp = client.get("/health")
+    pricing_resp = client.get("/pricing")
+    demo_resp = client.get("/demo")
+    checkout_resp = client.post("/billing/checkout", json={"plan": "pro"})
 
-    trace_resp = client.get(f"/api/lex/trace/{trace_id}")
-    metrics_resp = client.get("/api/lex/metrics")
-    audit_resp = client.get("/api/lex/audit")
-    policies_resp = client.get("/api/lex/policies")
+    assert health_resp.status_code == 200
+    assert pricing_resp.status_code == 200
+    assert demo_resp.status_code == 200
+    assert checkout_resp.status_code == 200
 
-    assert trace_resp.status_code == 200
-    assert metrics_resp.status_code == 200
-    assert audit_resp.status_code == 200
-    assert policies_resp.status_code == 200
+    pricing = pricing_resp.json()
+    assert pricing.get("product")
+    assert isinstance(pricing.get("plans"), list)
 
-    metrics = metrics_resp.json()
-    assert {"M", "ADV", "interventionsToday", "health"}.issubset(metrics.keys())
+    demo = demo_resp.json()
+    assert demo["intervention"] is True
 
-    audit = audit_resp.json()
-    assert {"count", "items"}.issubset(audit.keys())
-
-    policies = policies_resp.json()
-    assert isinstance(policies, list)
-    assert len(policies) >= 1
+    checkout = checkout_resp.json()
+    assert "checkout_url" in checkout
+    assert "session_id" in checkout

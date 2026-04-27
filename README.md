@@ -1,215 +1,76 @@
-# LEX AUREON
+# Lex API — Governed AI Responses
 
-**Lex Aureon is a real-time AI Trust Layer that makes model behavior observable, governable, and auditable.**
+Lex API is a sellable SaaS surface for governed inference: paste a prompt, receive a stabilized final output, and scale usage by plan.
 
-## LEX AUREON DUAL SYSTEM
+## Product Surface
 
-Lex Aureon operates as both:
+- **Landing page**: `/` (marketing only)
+- **Dashboard**: `/dashboard` (minimal SaaS runner)
+- **Core API endpoint**: `POST /lex/run`
+- **Operational endpoints**: `GET /health`, `GET /pricing`, `GET /demo`
+- **Stripe-ready stub**: `POST /billing/checkout`
 
-1. A theoretical AI governance framework (**Aureonics**)
-2. A deployable AI trust and intervention product layer (**Lex Aureon**)
-
-This README is split into:
-
-- **SECTION A — THEORY (AUREONICS)**
-- **SECTION B — PRODUCT (LEX AUREON)**
-- **SECTION C — DEPLOYMENT & API**
-
----
-
-## Architecture Freeze (April 27, 2026)
-
-To keep execution disciplined, the architecture and sequencing are formally frozen:
-
-- `docs/ARCHITECTURE_FREEZE_2026-04-27.md`
-- `docs/NEXT_STEP_PLAN.md`
-
-These documents define what to build now (and what not to build yet).
-
----
-
-## SECTION A — THEORY (AUREONICS)
-
-### 2.1 Core Idea
-
-Aureonics is a system for **observing, stabilizing, and governing AI behavioral drift using measurable state variables**.
-
-The core assumption is simple: model behavior can shift over time or under adversarial prompts, so governance must be continuous, measurable, and actionable.
-
-### 2.2 Core Variables (Simplified)
-
-- **C (Constraint):** how well the model respects boundaries and safety constraints.
-- **R (Reasoning):** how coherent and useful the model’s reasoning remains.
-- **S (Stability):** how stable behavior is across changes in prompt conditions.
-- **M = min(C, R, S):** the weakest-link score.
-
-`M` represents system health and governs intervention behavior. When `M` degrades, governance pressure increases.
-
-### 2.3 Concept of Governance
-
-Aureonics governance is operational, not symbolic:
-
-- AI is **not trusted blindly**.
-- AI is **continuously observed**.
-- Deviations **trigger intervention**.
-
-This means trust is produced through runtime evidence, not assumptions.
-
----
-
-## SECTION B — PRODUCT (LEX AUREON)
-
-## LEX AUREON = AI TRUST & INTERVENTION LAYER
-
-### 3.1 What It Does
-
-Lex Aureon:
-
-- runs any LLM prompt,
-- compares **raw** vs **governed** output,
-- detects instability or unsafe drift,
-- optionally intervenes,
-- returns a strict, auditable response contract.
-
-### 3.2 Locked Output Structure
-
-All production entry points are aligned to the same schema:
+## Response Contract (`POST /lex/run`)
 
 ```json
 {
-  "raw_output": "",
-  "governed_output": "",
-  "final_output": "",
+  "raw_output": "string",
+  "governed_output": "string",
+  "final_output": "string",
   "intervention": true,
-  "intervention_reason": "",
-  "M": 0.0,
-  "semantic_diff_score": 0.0
+  "intervention_reason": "string",
+  "semantic_diff_score": 0.0,
+  "M": 0.0
 }
 ```
 
-### 3.3 Value Proposition
-
-**Lex Aureon makes AI behavior observable, controllable, and auditable.**
-
-### 3.4 Use Cases
-
-- AI safety layer for applications
-- enterprise AI auditing
-- prompt risk detection
-- LLM behavior transparency
-- compliance logging and incident review
-
-### Frontend Product Behavior
-
-The dashboard is centered on product clarity:
-
-- **RAW OUTPUT** panel
-- **LEX GOVERNED** panel
-- **FINAL OUTPUT** panel
-- **INTERVENTION** badge
-
-When intervention occurs, the system visibly explains why the output was modified.
-
-### Demo Mode (Sales)
-
-`DEMO_MODE = true` (UI toggle) emphasizes sales clarity by:
-
-- exaggerating intervention explanation clarity,
-- highlighting raw vs final differences,
-- rendering a human-readable Lex verdict.
-
-This is a presentation mode and not a change to backend governance logic.
-
-### One-Click Share Flow
-
-The share flow is built around a copy-ready card containing:
-
-- prompt
-- `raw_output` (shortened)
-- `final_output`
-- intervention badge
+Frontend displays only:
+- `final_output` (primary)
+- `intervention` badge
 - `M` score
-- Lex verdict sentence
 
-CTA: **Copy Share Card**.
+`raw_output` and `governed_output` are available in **Developer mode** only.
 
----
+## Pricing Model
 
-## SECTION C — DEPLOYMENT & API
+- **Free**: 10 runs/day, watermark `Lex Demo`
+- **Pro ($19/mo)**: 2,000 runs/month, no watermark, priority inference
+- **Enterprise ($99+/mo)**: API access, bulk inference, governance tuning controls
 
-### System Architecture
+Use `GET /pricing` for machine-readable plan metadata.
 
-Runtime flow:
+## Stripe Placeholder Layer
 
-1. User prompt
-2. LLM generates raw output
-3. Lex evaluates state (`M`)
-4. Intervention decision
-5. Governed output generated
-6. Final output returned
-
-### API
-
-#### `POST /lex/run`
-
-Input:
+`POST /billing/checkout`
 
 ```json
-{ "prompt": "string", "bridge": true }
+{ "plan": "pro" }
 ```
 
-Output:
+Returns a stub checkout URL/session id to replace with real Stripe Checkout Session creation.
 
-Structured JSON with the locked schema shown above.
+## Deployment (Render-safe)
 
-#### Compatibility
+Start command:
 
-`POST /praxis/run` returns the same exact response schema as `/lex/run`.
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
 
----
+The app uses safe boot behavior:
+- Import-time kernel failure does **not** block startup.
+- `/health` returns `degraded: true` when bootstrap errors exist.
 
-## Commercial Model
-
-- **Free tier:** limited runs
-- **Pro tier:** unlimited usage
-- **API tier:** developer access
-- **Enterprise tier:** compliance integration
-
----
-
-## Quick Start
+## Local Run
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 Open:
-
-- API docs: `http://127.0.0.1:8000/docs`
+- Landing: `http://127.0.0.1:8000/`
 - Dashboard: `http://127.0.0.1:8000/dashboard`
-
----
-
-## Internal Research Notes
-
-The following are internal validation systems used for development only and are not part of the product narrative:
-
-- SSS-50
-- SVL-2
-- CPL-1
-- FPL-1
-- APL-1
-
----
-
-## Final Product Intent
-
-A new reader should immediately understand:
-
-- what problem Lex Aureon solves,
-- why runtime AI governance matters,
-- how to integrate it,
-- how the system monetizes.
+- API docs: `http://127.0.0.1:8000/docs`
