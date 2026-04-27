@@ -73,4 +73,45 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 Open:
 - Landing: `http://127.0.0.1:8000/`
 - Dashboard: `http://127.0.0.1:8000/dashboard`
-- API docs: `http://127.0.0.1:8000/docs`
+
+---
+
+## Internal Research Notes
+
+The following are internal validation systems used for development only and are not part of the product narrative:
+
+- SSS-50
+- SVL-2
+- CPL-1
+- FPL-1
+- APL-1
+
+---
+
+## Final Product Intent
+
+A new reader should immediately understand:
+
+- what problem Lex Aureon solves,
+- why runtime AI governance matters,
+- how to integrate it,
+- how the system monetizes.
+
+---
+
+## Frontend SaaS (Next.js)
+
+A sell-ready frontend lives in `frontend/` using Next.js App Router + Tailwind + Stripe Checkout.
+
+Key routes:
+- `/` Marketing landing page
+- `/demo` Conversion demo funnel
+- `/app` Dashboard for users
+- `/pricing` Subscription plans
+
+Start frontend:
+```bash
+cd frontend
+npm install
+npm run dev
+```
