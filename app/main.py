@@ -179,6 +179,21 @@ def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> Decisi
     )
 
 
+def _get_kernel() -> object:
+    """Compatibility accessor used by legacy tests and runtime callers."""
+    _ensure_state(app)
+    kernel = app.state.kernel
+    if kernel is not None and hasattr(kernel, "call_llm") and hasattr(kernel, "state"):
+        return kernel
+
+    kernel_result = load_kernel_safely()
+    kernel = kernel_result.get("kernel")
+    app.state.kernel = kernel
+    if kernel_result.get("error"):
+        app.state.startup_errors.append(str(kernel_result["error"]))
+    return kernel
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.kernel = None
@@ -264,6 +279,10 @@ def create_app() -> FastAPI:
 
     @app.post("/lex/run", response_model=DecisionResponse)
     def lex_run(payload: RunRequest, request: Request):
+        return _run_pipeline(app, payload, request)
+
+    @app.post("/praxis/run", response_model=DecisionResponse)
+    def praxis_run(payload: RunRequest, request: Request):
         return _run_pipeline(app, payload, request)
 
     @app.post("/billing/checkout", response_model=CheckoutStubResponse)

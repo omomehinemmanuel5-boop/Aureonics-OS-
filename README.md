@@ -2,6 +2,17 @@
 
 Lex API is a sellable SaaS surface for governed inference: paste a prompt, receive a stabilized final output, and scale usage by plan.
 
+## First-Sales Positioning (April 27, 2026)
+
+If your goal is to close first customers quickly, sell **trust + control** rather than generic model quality:
+
+1. Show one risky prompt in `/dashboard`.
+2. Let the pre-send invariance scanner flag risk before submit.
+3. Run the prompt and show intervention + stability margin `M(t)`.
+4. Export/share the corrected output as proof of governed execution.
+
+This creates a concrete “before/after” demo that buyers understand in minutes.
+
 ## Product Surface
 
 - **Landing page**: `/` (marketing only)
@@ -96,6 +107,12 @@ A new reader should immediately understand:
 - why runtime AI governance matters,
 - how to integrate it,
 - how the system monetizes.
+
+## Recommended Next Path (0 → 3 customers)
+
+- **Week 1:** Create a vertical demo pack (legal ops, procurement, customer support escalations) using saved prompts and traces.
+- **Week 2:** Add “trust receipts” export (input hash, output hash, intervention reason, M(t) timeline) for buyer audits.
+- **Week 3:** Ship a lightweight hosted trial with 20 governed runs and in-app upgrade CTA.
 
 ---
 
