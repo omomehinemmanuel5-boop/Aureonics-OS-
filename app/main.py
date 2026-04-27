@@ -4,9 +4,10 @@ from datetime import datetime, timezone
 import importlib
 import os
 import sqlite3
+import uuid
+from collections import deque
 from difflib import SequenceMatcher
-from typing import Literal, Optional
-from uuid import uuid4
+from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -339,37 +340,35 @@ def _run_pipeline(payload: RunRequest, request: Request) -> DecisionResponse:
     )
 
 
-def _normalize_trace_row(row: dict) -> CanonicalTrace:
-    c = float(row.get("C", row.get("c", 0.0)) or 0.0)
-    r = float(row.get("R", row.get("r", 0.0)) or 0.0)
-    s = float(row.get("S", row.get("s", 0.0)) or 0.0)
-    m_val = float(row.get("M", row.get("m", min(c, r, s))) or 0.0)
-    intervened = bool(row.get("intervention", row.get("intervened", False)))
-    semantic_diff = float(row.get("semantic_diff_score", row.get("semanticDiff", 0.0)) or 0.0)
-    theta_eff = row.get("thetaEff", row.get("theta_eff"))
-    created_at = row.get("created_at") or row.get("createdAt")
-    if not created_at:
-        created_at = datetime.now(timezone.utc).isoformat()
-    return CanonicalTrace(
-        id=str(row.get("id", uuid4())),
-        createdAt=str(created_at),
-        prompt=str(row.get("prompt", "")),
-        raw=str(row.get("response_raw", row.get("raw", ""))),
-        governed=str(row.get("response_governed", row.get("governed", ""))),
-        final=str(row.get("response_final", row.get("final", ""))),
-        reason=str(row.get("intervention_reason", row.get("reason", "No intervention recorded."))),
-        metrics=TraceMetrics(
-            M=m_val,
-            C=c,
-            R=r,
-            S=s,
-            ADV=round(c - r, 6),
-            thetaEff=float(theta_eff) if theta_eff is not None else None,
-            semanticDiff=semantic_diff,
-            intervened=intervened,
-            health=_health_label(intervened=intervened, m_val=m_val),
-        ),
-    )
+def _to_canonical_trace(payload: RunRequest, decision: DecisionResponse) -> dict[str, Any]:
+    crs = _normalized_crs(payload.prompt, decision.raw_output, decision.governed_output)
+    semantic_diff = float(decision.semantic_diff_score)
+    theta_eff = round(max(0.35, 1.0 - semantic_diff * 0.55), 6)
+    adv = round((crs["C"] + crs["R"] + crs["S"]) / 3.0, 6)
+    health = "stable" if (not decision.intervention and decision.M >= 0.2) else "governed"
+
+    trace = {
+        "id": f"tr_{uuid.uuid4().hex[:12]}",
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "prompt": payload.prompt,
+        "raw": decision.raw_output,
+        "governed": decision.governed_output,
+        "final": decision.final_output,
+        "reason": decision.intervention_reason,
+        "metrics": {
+            "M": float(decision.M),
+            "C": crs["C"],
+            "R": crs["R"],
+            "S": crs["S"],
+            "ADV": adv,
+            "thetaEff": theta_eff,
+            "semanticDiff": semantic_diff,
+            "intervened": bool(decision.intervention),
+            "health": health,
+            "coreLock": True,
+        },
+    }
+    return trace
 
 
 @app.get("/", include_in_schema=False)
@@ -377,9 +376,34 @@ def landing():
     return FileResponse("app/static/index.html")
 
 
+@app.get("/console", include_in_schema=False)
+def console_page():
+    return FileResponse("app/static/console.html")
+
+
 @app.get("/dashboard", include_in_schema=False)
 def dashboard():
-    return FileResponse("app/static/index.html")
+    return FileResponse("app/static/console.html")
+
+
+@app.get("/paper", include_in_schema=False)
+def paper_page():
+    return FileResponse("app/static/paper.html")
+
+
+@app.get("/policies", include_in_schema=False)
+def policies_page():
+    return FileResponse("app/static/policies.html")
+
+
+@app.get("/research", include_in_schema=False)
+def research_page():
+    return FileResponse("app/static/research.html")
+
+
+@app.get("/trace/{trace_id}", include_in_schema=False)
+def trace_page(trace_id: str):
+    return FileResponse("app/static/trace.html")
 
 
 @app.post("/lex/run", response_model=DecisionResponse)
@@ -547,6 +571,73 @@ def praxis_health():
     k = _get_kernel()
     provider = getattr(k, "model_name", "unavailable") if k else "unavailable"
     return {"status": "ok", "provider": provider}
+
+
+@app.post("/api/lex/trace")
+def create_trace(payload: RunRequest):
+    decision = _run_pipeline(payload)
+    trace = _to_canonical_trace(payload, decision)
+    app.state.lex_traces.appendleft(trace)
+    return trace
+
+
+@app.get("/api/lex/trace/{trace_id}")
+def get_trace(trace_id: str):
+    for trace in app.state.lex_traces:
+        if trace["id"] == trace_id:
+            return trace
+    raise HTTPException(status_code=404, detail="Trace not found")
+
+
+@app.get("/api/lex/metrics")
+def get_metrics():
+    traces = list(app.state.lex_traces)
+    if not traces:
+        return {
+            "totals": {"traces": 0, "interventions": 0},
+            "live": {"M": 0.0, "C": 0.0, "R": 0.0, "S": 0.0, "ADV": 0.0, "health": "warming"},
+            "window": {"interventionRate": 0.0, "avgSemanticDiff": 0.0},
+        }
+
+    latest = traces[0]["metrics"]
+    interventions = sum(1 for t in traces if t["metrics"]["intervened"])
+    avg_sem_diff = sum(float(t["metrics"]["semanticDiff"]) for t in traces) / len(traces)
+
+    return {
+        "totals": {"traces": len(traces), "interventions": interventions},
+        "live": {
+            "M": latest["M"],
+            "C": latest["C"],
+            "R": latest["R"],
+            "S": latest["S"],
+            "ADV": latest["ADV"],
+            "health": latest["health"],
+        },
+        "window": {
+            "interventionRate": round(interventions / len(traces), 6),
+            "avgSemanticDiff": round(avg_sem_diff, 6),
+        },
+    }
+
+
+@app.get("/api/lex/audit")
+def get_audit():
+    return [
+        {
+            "id": item["id"],
+            "createdAt": item["createdAt"],
+            "intervened": item["metrics"]["intervened"],
+            "M": item["metrics"]["M"],
+            "reason": item["reason"],
+            "health": item["metrics"]["health"],
+        }
+        for item in list(app.state.lex_traces)[:50]
+    ]
+
+
+@app.get("/api/lex/policies")
+def get_policies():
+    return {"items": app.state.policies}
 
 
 def _db_path() -> str:
