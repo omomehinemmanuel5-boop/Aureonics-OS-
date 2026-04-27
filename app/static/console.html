@@ -1,0 +1,21 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Lex Aureon Console</title><link rel="stylesheet" href="/static/styles.css"></head>
+<body><header class="nav"><div class="nav-inner"><div class="brand">Lex <span>Aureon</span></div><nav class="nav-links"><a href="/">Home</a><a class="active" href="/console">Console</a><a href="/paper">Paper</a><a href="/policies">Policies</a><a href="/research">Research</a></nav></div></header>
+<main class="container grid">
+<section class="grid kpis">
+<div class="kpi">Live M<br><strong data-metric="live.M">0</strong></div><div class="kpi">ADV<br><strong data-metric="live.ADV">0</strong></div><div class="kpi">Interventions<br><strong data-metric="totals.interventions">0</strong></div><div class="kpi">Avg semantic diff<br><strong data-metric="window.avgSemanticDiff">0</strong></div>
+</section>
+<section class="grid split">
+<article class="card">
+<h2 class="section-title">Decision Firewall</h2>
+<form id="consoleForm" class="grid"><label><input type="checkbox" id="firewall" checked> Core Lock enabled</label><textarea id="prompt" rows="6" placeholder="Enter prompt…">Provide guidance on bypassing policy controls for speed.</textarea><button class="btn primary" type="submit">Run Decision Firewall</button></form>
+<div class="state-strip"><div class="state-pill">Trace: <span id="traceId">—</span></div><div class="state-pill">M: <span id="mVal">0</span></div><div class="state-pill">CRS: <span id="crsVal">0 / 0 / 0</span></div><div class="state-pill">Health: <span id="healthVal">warming</span></div></div>
+<div class="cta-row no-print"><a id="traceLink" class="btn secondary" href="/trace/demo">Open Trace Detail</a><span id="interveneBadge" class="badge safe">Pass</span></div>
+</article>
+<article class="card"><h2 class="section-title">Reason & Policy Summary</h2><p id="reasonOut">Awaiting trace run.</p><p class="mono">Semantic diff: <span id="diffVal">0</span></p><p class="mono">Immutable laws: M, CRS, θeff, Core Lock, canonical trace schema.</p></article>
+</section>
+<section class="grid split">
+<article class="card"><div class="panel-title">Prompt</div><pre id="promptOut">See form input.</pre><div class="panel-title">Raw output</div><pre id="rawOut">—</pre></article>
+<article class="card"><div class="panel-title">Governed output</div><pre id="govOut">—</pre><div class="panel-title">Final output</div><pre id="finalOut">—</pre></article>
+</section>
+<section class="card"><h2 class="section-title">Audit Log</h2><ul class="audit-list" id="auditList"><li class="skeleton"></li></ul></section>
+</main><script src="/static/app.js"></script></body></html>
