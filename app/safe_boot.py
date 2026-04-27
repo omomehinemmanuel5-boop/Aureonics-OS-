@@ -28,3 +28,14 @@ def load_router_safely(module_path: str, attr_name: str = "router") -> SafeBootR
         return SafeBootResult(ok=True, router=router, error=None)
     except Exception as exc:  # pragma: no cover - defensive bootstrap guard
         return SafeBootResult(ok=False, router=None, error=f"router load failed ({module_path}): {exc}")
+
+
+def load_supabase_safely(url: str, key: str) -> SafeBootResult:
+    """Create a Supabase client if the dependency is available."""
+    try:
+        supabase_mod = importlib.import_module("supabase")
+        create_client = getattr(supabase_mod, "create_client")
+        client = create_client(url, key)
+        return SafeBootResult(ok=True, client=client, error=None)
+    except Exception as exc:  # pragma: no cover - defensive bootstrap guard
+        return SafeBootResult(ok=False, client=None, error=f"supabase init failed: {exc}")
