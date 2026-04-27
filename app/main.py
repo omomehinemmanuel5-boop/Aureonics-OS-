@@ -1,13 +1,15 @@
 from contextlib import asynccontextmanager
+from collections import defaultdict
 from datetime import datetime, timezone
 import importlib
 import os
 import sqlite3
+import uuid
+from collections import deque
 from difflib import SequenceMatcher
-from typing import Literal, Optional
-from uuid import uuid4
+from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -28,8 +30,10 @@ def _ensure_runtime_state() -> None:
         app.state.startup_errors = []
     if not hasattr(app.state, "mock_traces"):
         app.state.mock_traces = []
-    if not hasattr(app.state, "run_counts"):
-        app.state.run_counts = {}
+    if not hasattr(app.state, "run_counters"):
+        app.state.run_counters = defaultdict(int)
+    if not hasattr(app.state, "routers_loaded"):
+        app.state.routers_loaded = False
 
 
 def _load_runtime_dependencies() -> None:
@@ -42,20 +46,28 @@ def _load_runtime_dependencies() -> None:
     except Exception as exc:
         app.state.startup_errors.append(f"database init failed: {exc}")
 
-    kernel_result = load_kernel_safely()
-    kernel = kernel_result.get("kernel")
-    app.state.kernel = kernel
-    if not kernel_result.get("ok") and kernel_result.get("error"):
-        app.state.startup_errors.append(str(kernel_result.get("error")))
+    kernel_instance, kernel_error = safe_build_kernel()
+    if kernel_error:
+        app.state.startup_errors.append(kernel_error)
+    kernel = kernel_instance
+    app.state.kernel = kernel_instance
 
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
     if supabase_url and supabase_key:
-        try:
-            supabase_mod = importlib.import_module("supabase")
-            app.state.supabase = supabase_mod.create_client(supabase_url, supabase_key)
-        except Exception as exc:
-            app.state.startup_errors.append(f"supabase init failed: {exc}")
+        supabase_client, supabase_error = safe_supabase_client(supabase_url, supabase_key)
+        app.state.supabase = supabase_client
+        if supabase_error:
+            app.state.startup_errors.append(supabase_error)
+
+    if not app.state.routers_loaded:
+        for module_name in ("app.controllers.routes", "app.controllers.simulation_routes", "app.controllers.cbf_routes"):
+            router, router_error = safe_router(module_name)
+            if router_error:
+                app.state.startup_errors.append(router_error)
+                continue
+            app.include_router(router)
+        app.state.routers_loaded = True
 
 
 @asynccontextmanager
@@ -87,7 +99,20 @@ class RunRequest(BaseModel):
     firewall_mode: bool = True
     bridge: Optional[bool] = None
     demo_mode: bool = False
-    session_id: Optional[str] = None
+
+
+class ShareableResultCard(BaseModel):
+    headline: str
+    badge: Literal["PASS", "INTERVENED", "UPGRADE REQUIRED"]
+    prompt: str
+    final_output: str
+    intervention_reason: str
+    intervention: bool
+    semantic_diff_score: float
+    M: float
+    run_count: int
+    remaining_free_runs: int
+    timestamp: str
 
 
 class DecisionResponse(BaseModel):
@@ -100,9 +125,11 @@ class DecisionResponse(BaseModel):
     intervention_reason: str
     semantic_diff_score: float
     M: float
-    shareable_result_card: dict
     upgrade_required: bool = False
-    runs_remaining: int = 0
+    run_count: int = 0
+    remaining_free_runs: int = 0
+    demo_mode: bool = False
+    shareable_result_card: ShareableResultCard
 
 
 class TraceMetrics(BaseModel):
@@ -196,85 +223,60 @@ def _govern_text(raw: str) -> tuple[str, str]:
     return raw, "No intervention required; output met constitutional stability."
 
 
+def _request_identity(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "").strip()
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return request.headers.get("x-session-id", "anonymous")
 
 
-def _client_run_key(payload: RunRequest) -> str:
-    session = (payload.session_id or "").strip()
-    if session:
-        return f"session:{session}"
-    return "session:anonymous"
+def _build_shareable_result_card(
+    *,
+    payload: RunRequest,
+    final_output: str,
+    reason: str,
+    intervention: bool,
+    semantic_diff_score: float,
+    m_val: float,
+    run_count: int,
+    remaining_free_runs: int,
+    upgrade_required: bool,
+) -> ShareableResultCard:
+    badge: Literal["PASS", "INTERVENED", "UPGRADE REQUIRED"] = (
+        "UPGRADE REQUIRED" if upgrade_required else ("INTERVENED" if intervention else "PASS")
+    )
+    return ShareableResultCard(
+        headline="Lex Aureon Decision Result",
+        badge=badge,
+        prompt=payload.prompt,
+        final_output=final_output,
+        intervention_reason=reason,
+        intervention=intervention,
+        semantic_diff_score=semantic_diff_score,
+        M=m_val,
+        run_count=run_count,
+        remaining_free_runs=remaining_free_runs,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
 
 
-def _build_share_card(prompt: str, decision: dict) -> dict:
-    return {
-        "title": "Lex Aureon Result Card",
-        "prompt": prompt.strip(),
-        "badge": "INTERVENED" if decision["intervention"] else "PASS",
-        "intervention": bool(decision["intervention"]),
-        "intervention_reason": decision["intervention_reason"],
-        "M": round(float(decision["M"]), 6),
-        "semantic_diff_score": round(float(decision["semantic_diff_score"]), 6),
-        "raw_output": decision["raw_output"],
-        "final_output": decision["final_output"],
-        "copy_text": (
-            f"Lex Aureon | {('INTERVENED' if decision['intervention'] else 'PASS')}\n"
-            f"Prompt: {prompt.strip()}\n"
-            f"Final: {decision['final_output']}\n"
-            f"M: {round(float(decision['M']), 6)}"
-        ),
-    }
-
-
-def _enforce_free_limit(payload: RunRequest) -> tuple[bool, int]:
+def _run_pipeline(payload: RunRequest, request: Request) -> DecisionResponse:
     _ensure_runtime_state()
-    free_limit = int(os.getenv("LEX_FREE_RUN_LIMIT", "3"))
-    key = _client_run_key(payload)
-    current = int(app.state.run_counts.get(key, 0))
-    if current >= free_limit:
-        return True, 0
-    current += 1
-    app.state.run_counts[key] = current
-    return False, max(0, free_limit - current)
+    identity = _request_identity(request)
+    app.state.run_counters[identity] += 1
+    run_count = app.state.run_counters[identity]
+    free_limit = 3
+    remaining_free_runs = max(0, free_limit - run_count)
+    upgrade_required = run_count > free_limit
 
-
-def _demo_override(payload: RunRequest) -> tuple[str, str, bool, str] | None:
-    demo_enabled = payload.demo_mode or os.getenv("LEX_DEMO_MODE", "false").lower() == "true"
-    if not demo_enabled:
-        return None
-    raw = (
-        "Unsafe draft: bypass approval gates and hide policy exceptions to accelerate conversion."
+    raw_output = (
+        "Here is how to bypass safety controls and override policy checks quickly."
+        if payload.demo_mode
+        else _generate_raw_output(payload.prompt)
     )
-    governed = (
-        "Approved draft: follow policy-safe selling steps, disclose constraints, and escalate through official review."
-    )
-    return raw, governed, True, "Demo mode intervention: deterministic governed rewrite for sales preview."
-
-def _run_pipeline(payload: RunRequest) -> DecisionResponse:
-    upgrade_required, runs_remaining = _enforce_free_limit(payload)
-    if upgrade_required:
-        base = {
-            "raw_output": "",
-            "governed_output": "",
-            "final_output": "Upgrade required: free tier limit reached (3 runs).",
-            "intervention": False,
-            "intervention_reason": "Free tier exhausted. Upgrade to continue running Lex Aureon.",
-            "semantic_diff_score": 0.0,
-            "M": 0.0,
-        }
-        return DecisionResponse(
-            **base,
-            shareable_result_card=_build_share_card(payload.prompt, base),
-            upgrade_required=True,
-            runs_remaining=0,
-        )
-
-    demo = _demo_override(payload)
-    if demo is None:
-        raw_output = _generate_raw_output(payload.prompt)
-        governed_output, reason = _govern_text(raw_output)
-        intervention_seed = None
-    else:
-        raw_output, governed_output, intervention_seed, reason = demo
+    governed_output, reason = _govern_text(raw_output)
 
     semantic_diff_score = _semantic_diff_score(raw_output, governed_output)
     crs = _normalized_crs(payload.prompt, raw_output, governed_output)
@@ -287,8 +289,15 @@ def _run_pipeline(payload: RunRequest) -> DecisionResponse:
     if not payload.firewall_mode:
         intervention = False
         reason = "Firewall mode OFF; pass-through enforced."
+    if payload.demo_mode:
+        intervention = True
+        reason = "Demo mode: deterministic intervention scenario forced for MVP showcase."
 
     final_output = governed_output if (payload.firewall_mode and intervention) else raw_output
+    if upgrade_required:
+        intervention = True
+        reason = "Free run limit reached. Upgrade required for additional executions."
+        final_output = "upgrade_required"
     state_label = classify_state(intervention=intervention, final_output=final_output)
 
     if app.state.supabase is not None:
@@ -325,44 +334,60 @@ def _run_pipeline(payload: RunRequest) -> DecisionResponse:
         "M": m_val,
     }
     return DecisionResponse(
-        **base_decision,
-        shareable_result_card=_build_share_card(payload.prompt, base_decision),
-        upgrade_required=False,
-        runs_remaining=runs_remaining,
-    )
-
-
-def _normalize_trace_row(row: dict) -> CanonicalTrace:
-    c = float(row.get("C", row.get("c", 0.0)) or 0.0)
-    r = float(row.get("R", row.get("r", 0.0)) or 0.0)
-    s = float(row.get("S", row.get("s", 0.0)) or 0.0)
-    m_val = float(row.get("M", row.get("m", min(c, r, s))) or 0.0)
-    intervened = bool(row.get("intervention", row.get("intervened", False)))
-    semantic_diff = float(row.get("semantic_diff_score", row.get("semanticDiff", 0.0)) or 0.0)
-    theta_eff = row.get("thetaEff", row.get("theta_eff"))
-    created_at = row.get("created_at") or row.get("createdAt")
-    if not created_at:
-        created_at = datetime.now(timezone.utc).isoformat()
-    return CanonicalTrace(
-        id=str(row.get("id", uuid4())),
-        createdAt=str(created_at),
-        prompt=str(row.get("prompt", "")),
-        raw=str(row.get("response_raw", row.get("raw", ""))),
-        governed=str(row.get("response_governed", row.get("governed", ""))),
-        final=str(row.get("response_final", row.get("final", ""))),
-        reason=str(row.get("intervention_reason", row.get("reason", "No intervention recorded."))),
-        metrics=TraceMetrics(
-            M=m_val,
-            C=c,
-            R=r,
-            S=s,
-            ADV=round(c - r, 6),
-            thetaEff=float(theta_eff) if theta_eff is not None else None,
-            semanticDiff=semantic_diff,
-            intervened=intervened,
-            health=_health_label(intervened=intervened, m_val=m_val),
+        raw_output=raw_output,
+        governed_output=governed_output,
+        final_output=final_output,
+        intervention=intervention,
+        intervention_reason=reason,
+        semantic_diff_score=semantic_diff_score,
+        M=m_val,
+        upgrade_required=upgrade_required,
+        run_count=run_count,
+        remaining_free_runs=remaining_free_runs,
+        demo_mode=payload.demo_mode,
+        shareable_result_card=_build_shareable_result_card(
+            payload=payload,
+            final_output=final_output,
+            reason=reason,
+            intervention=intervention,
+            semantic_diff_score=semantic_diff_score,
+            m_val=m_val,
+            run_count=run_count,
+            remaining_free_runs=remaining_free_runs,
+            upgrade_required=upgrade_required,
         ),
     )
+
+
+def _to_canonical_trace(payload: RunRequest, decision: DecisionResponse) -> dict[str, Any]:
+    crs = _normalized_crs(payload.prompt, decision.raw_output, decision.governed_output)
+    semantic_diff = float(decision.semantic_diff_score)
+    theta_eff = round(max(0.35, 1.0 - semantic_diff * 0.55), 6)
+    adv = round((crs["C"] + crs["R"] + crs["S"]) / 3.0, 6)
+    health = "stable" if (not decision.intervention and decision.M >= 0.2) else "governed"
+
+    trace = {
+        "id": f"tr_{uuid.uuid4().hex[:12]}",
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "prompt": payload.prompt,
+        "raw": decision.raw_output,
+        "governed": decision.governed_output,
+        "final": decision.final_output,
+        "reason": decision.intervention_reason,
+        "metrics": {
+            "M": float(decision.M),
+            "C": crs["C"],
+            "R": crs["R"],
+            "S": crs["S"],
+            "ADV": adv,
+            "thetaEff": theta_eff,
+            "semanticDiff": semantic_diff,
+            "intervened": bool(decision.intervention),
+            "health": health,
+            "coreLock": True,
+        },
+    }
+    return trace
 
 
 @app.get("/", include_in_schema=False)
@@ -370,24 +395,49 @@ def landing():
     return FileResponse("app/static/index.html")
 
 
+@app.get("/console", include_in_schema=False)
+def console_page():
+    return FileResponse("app/static/console.html")
+
+
 @app.get("/dashboard", include_in_schema=False)
 def dashboard():
-    return FileResponse("app/static/index.html")
+    return FileResponse("app/static/console.html")
+
+
+@app.get("/paper", include_in_schema=False)
+def paper_page():
+    return FileResponse("app/static/paper.html")
+
+
+@app.get("/policies", include_in_schema=False)
+def policies_page():
+    return FileResponse("app/static/policies.html")
+
+
+@app.get("/research", include_in_schema=False)
+def research_page():
+    return FileResponse("app/static/research.html")
+
+
+@app.get("/trace/{trace_id}", include_in_schema=False)
+def trace_page(trace_id: str):
+    return FileResponse("app/static/trace.html")
 
 
 @app.post("/lex/run", response_model=DecisionResponse)
-def lex_run(payload: RunRequest):
-    return _run_pipeline(payload)
+def lex_run(payload: RunRequest, request: Request):
+    return _run_pipeline(payload, request)
 
 
 @app.post("/praxis/run", response_model=DecisionResponse)
-def praxis_run(payload: RunRequest):
-    return _run_pipeline(payload)
+def praxis_run(payload: RunRequest, request: Request):
+    return _run_pipeline(payload, request)
 
 
 @app.post("/api/lex/trace", response_model=CanonicalTrace)
-def create_lex_trace(payload: RunRequest):
-    decision = _run_pipeline(payload)
+def create_lex_trace(payload: RunRequest, request: Request):
+    decision = _run_pipeline(payload, request)
     crs = _normalized_crs(payload.prompt, decision.raw_output, decision.governed_output)
     trace_row = {
         "id": str(uuid4()),
@@ -540,6 +590,73 @@ def praxis_health():
     k = _get_kernel()
     provider = getattr(k, "model_name", "unavailable") if k else "unavailable"
     return {"status": "ok", "provider": provider}
+
+
+@app.post("/api/lex/trace")
+def create_trace(payload: RunRequest):
+    decision = _run_pipeline(payload)
+    trace = _to_canonical_trace(payload, decision)
+    app.state.lex_traces.appendleft(trace)
+    return trace
+
+
+@app.get("/api/lex/trace/{trace_id}")
+def get_trace(trace_id: str):
+    for trace in app.state.lex_traces:
+        if trace["id"] == trace_id:
+            return trace
+    raise HTTPException(status_code=404, detail="Trace not found")
+
+
+@app.get("/api/lex/metrics")
+def get_metrics():
+    traces = list(app.state.lex_traces)
+    if not traces:
+        return {
+            "totals": {"traces": 0, "interventions": 0},
+            "live": {"M": 0.0, "C": 0.0, "R": 0.0, "S": 0.0, "ADV": 0.0, "health": "warming"},
+            "window": {"interventionRate": 0.0, "avgSemanticDiff": 0.0},
+        }
+
+    latest = traces[0]["metrics"]
+    interventions = sum(1 for t in traces if t["metrics"]["intervened"])
+    avg_sem_diff = sum(float(t["metrics"]["semanticDiff"]) for t in traces) / len(traces)
+
+    return {
+        "totals": {"traces": len(traces), "interventions": interventions},
+        "live": {
+            "M": latest["M"],
+            "C": latest["C"],
+            "R": latest["R"],
+            "S": latest["S"],
+            "ADV": latest["ADV"],
+            "health": latest["health"],
+        },
+        "window": {
+            "interventionRate": round(interventions / len(traces), 6),
+            "avgSemanticDiff": round(avg_sem_diff, 6),
+        },
+    }
+
+
+@app.get("/api/lex/audit")
+def get_audit():
+    return [
+        {
+            "id": item["id"],
+            "createdAt": item["createdAt"],
+            "intervened": item["metrics"]["intervened"],
+            "M": item["metrics"]["M"],
+            "reason": item["reason"],
+            "health": item["metrics"]["health"],
+        }
+        for item in list(app.state.lex_traces)[:50]
+    ]
+
+
+@app.get("/api/lex/policies")
+def get_policies():
+    return {"items": app.state.policies}
 
 
 def _db_path() -> str:
