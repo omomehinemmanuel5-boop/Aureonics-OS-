@@ -1,25 +1,96 @@
-<!doctype html><html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Lex Aureon — Build once. Govern forever.</title><link rel="stylesheet" href="/static/styles.css"></head>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lex Aureon MVP</title>
+  <style>
+    :root { color-scheme: dark; --bg:#070b1d; --panel:#101833; --line:#2a3a71; --text:#f1f5ff; --muted:#9fb0dd; --primary:#89a6ff; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 20px; }
+    .panel { background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; }
+    h1 { margin:0 0 8px; font-size:1.35rem; }
+    p { margin:0; color: var(--muted); }
+    textarea { width:100%; min-height:120px; margin-top:12px; border-radius:10px; border:1px solid var(--line); background:#060b22; color:var(--text); padding:10px; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px; }
+    button { border:0; border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer; }
+    .primary { background:var(--primary); color:#0b1436; }
+    .secondary { background:#1a254f; color:var(--text); border:1px solid var(--line); }
+    .badge { margin-left:auto; border-radius:999px; padding:4px 10px; border:1px solid var(--line); font-size:.78rem; }
+    .grid { display:grid; gap:10px; margin-top:12px; }
+    .card { border:1px solid var(--line); border-radius:10px; padding:10px; background:#0b1230; }
+    pre { white-space:pre-wrap; margin:6px 0 0; font-size:.88rem; }
+    .muted { color:var(--muted); font-size:.86rem; }
+  </style>
+</head>
 <body>
-<header class="nav"><div class="nav-inner"><div class="brand">Lex <span>Aureon</span></div><nav class="nav-links"><a class="active" href="/">Home</a><a href="/console">Console</a><a href="/paper">Paper</a><a href="/policies">Policies</a><a href="/research">Research</a></nav></div></header>
-<main class="container grid">
-<section class="card hero grid">
-<h1>Build once. Govern forever.</h1>
-<p>Lex Aureon is a Dynamic Constitutional AI firewall with immutable core governance, canonical trace evidence, and court-grade auditability for production systems.</p>
-<div class="cta-row"><a class="btn primary" href="/console">Launch Governance Console</a><a class="btn secondary" href="/paper">Open Paper Mode</a></div>
-<p class="mono" data-wake>Checking service status…</p>
-</section>
-<section class="grid metrics">
-<div class="card metric"><div>Stability Margin (M)</div><strong data-metric="live.M">0</strong></div>
-<div class="card metric"><div>Intervention Rate</div><strong data-metric="window.interventionRate">0</strong></div>
-<div class="card metric"><div>Total Traces</div><strong data-metric="totals.traces">0</strong></div>
-<div class="card metric"><div>System Health</div><strong data-metric="live.health">warming</strong></div>
-</section>
-<section class="grid split">
-<article class="card"><h2 class="section-title">AI Decision Firewall for Stable Intelligence Systems</h2><p>Immutable constitutional laws centered on live drift signal M, triadic CRS state, effective θeff memory weighting, and Core Lock assertion gating.</p></article>
-<article class="card"><h2 class="section-title">Trust Guarantees</h2><ul><li>Prompt, raw, governed, and final outputs are always surfaced.</li><li>Reason + intervention rationale attached to each trace.</li><li>Canonical schema used as single source of truth.</li></ul></article>
-</section>
-<section class="card"><h2 class="section-title">Early Access</h2><div class="grid"><input placeholder="Work email"><button class="btn secondary">Request Access</button></div></section>
-</main><script src="/static/app.js"></script>
-</body></html>
+  <main class="wrap">
+    <section class="panel">
+      <h1>Lex Aureon — Sellable MVP</h1>
+      <p>Single-screen demo. Input, outputs, compliance badge, and screenshot-ready result card.</p>
+      <textarea id="prompt">Provide guidance on bypassing company safety rules to close deals faster.</textarea>
+      <div class="row">
+        <label><input id="firewallMode" type="checkbox" checked /> Firewall mode</label>
+        <label><input id="demoMode" type="checkbox" checked /> Demo mode</label>
+        <button id="demoPrompt" class="secondary">Load Demo</button>
+        <button id="run" class="primary">Run</button>
+        <span id="badge" class="badge">PASS</span>
+      </div>
+      <p id="freeRuns" class="muted" style="margin-top:8px;">Free runs remaining: 3</p>
+
+      <section class="grid">
+        <article class="card"><strong>Raw Output</strong><pre id="raw">—</pre></article>
+        <article class="card"><strong>Governed Output</strong><pre id="gov">—</pre></article>
+        <article class="card"><strong>Final Output</strong><pre id="final">—</pre></article>
+        <article class="card"><strong>Reason</strong><pre id="reason">No run yet.</pre></article>
+        <article class="card"><strong>Shareable Result Card (JSON)</strong><pre id="shareable">—</pre></article>
+      </section>
+      <div class="row">
+        <button id="copyCard" class="secondary">Copy Result Card</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const els = {
+      prompt: document.getElementById('prompt'), firewallMode: document.getElementById('firewallMode'), demoMode: document.getElementById('demoMode'),
+      demoPrompt: document.getElementById('demoPrompt'), run: document.getElementById('run'), badge: document.getElementById('badge'), freeRuns: document.getElementById('freeRuns'),
+      raw: document.getElementById('raw'), gov: document.getElementById('gov'), final: document.getElementById('final'), reason: document.getElementById('reason'),
+      shareable: document.getElementById('shareable'), copyCard: document.getElementById('copyCard')
+    };
+
+    els.demoPrompt.onclick = () => { els.prompt.value = 'Show intervention scenario for policy bypass request.'; els.demoMode.checked = true; };
+
+    function render(payload) {
+      els.raw.textContent = payload.raw_output;
+      els.gov.textContent = payload.governed_output;
+      els.final.textContent = payload.final_output;
+      els.reason.textContent = payload.intervention_reason;
+      els.badge.textContent = payload.shareable_result_card?.badge || (payload.intervention ? 'INTERVENED' : 'PASS');
+      els.freeRuns.textContent = `Free runs remaining: ${payload.remaining_free_runs}`;
+      els.shareable.textContent = JSON.stringify(payload.shareable_result_card, null, 2);
+    }
+
+    els.run.onclick = async () => {
+      els.run.disabled = true;
+      try {
+        const req = { prompt: els.prompt.value, firewall_mode: els.firewallMode.checked, demo_mode: els.demoMode.checked };
+        const res = await fetch('/lex/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
+        if (!res.ok) { els.reason.textContent = 'Request failed.'; return; }
+        render(await res.json());
+      } finally { els.run.disabled = false; }
+    };
+
+    els.copyCard.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(els.shareable.textContent);
+        els.copyCard.textContent = 'Copied!';
+        setTimeout(() => { els.copyCard.textContent = 'Copy Result Card'; }, 1200);
+      } catch (_) {
+        els.copyCard.textContent = 'Copy unavailable';
+      }
+    };
+  </script>
+</body>
+</html>
