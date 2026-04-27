@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from collections import defaultdict
 from datetime import datetime, timezone
 import importlib
 import os
@@ -7,13 +8,14 @@ from difflib import SequenceMatcher
 from typing import Literal, Optional
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
 from lex_memory.engine import classify_state, run_memory_pipeline
+from app.safe_boot import safe_build_kernel, safe_router, safe_supabase_client
 
 kernel = None
 
@@ -27,6 +29,10 @@ def _ensure_runtime_state() -> None:
         app.state.startup_errors = []
     if not hasattr(app.state, "mock_traces"):
         app.state.mock_traces = []
+    if not hasattr(app.state, "run_counters"):
+        app.state.run_counters = defaultdict(int)
+    if not hasattr(app.state, "routers_loaded"):
+        app.state.routers_loaded = False
 
 
 def _load_runtime_dependencies() -> None:
@@ -39,21 +45,28 @@ def _load_runtime_dependencies() -> None:
     except Exception as exc:
         app.state.startup_errors.append(f"database init failed: {exc}")
 
-    try:
-        kernel_mod = importlib.import_module("sovereign_kernel_v2")
-        kernel = kernel_mod.SovereignKernel()
-        app.state.kernel = kernel
-    except Exception as exc:
-        app.state.startup_errors.append(f"kernel init failed: {exc}")
+    kernel_instance, kernel_error = safe_build_kernel()
+    if kernel_error:
+        app.state.startup_errors.append(kernel_error)
+    kernel = kernel_instance
+    app.state.kernel = kernel_instance
 
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
     if supabase_url and supabase_key:
-        try:
-            supabase_mod = importlib.import_module("supabase")
-            app.state.supabase = supabase_mod.create_client(supabase_url, supabase_key)
-        except Exception as exc:
-            app.state.startup_errors.append(f"supabase init failed: {exc}")
+        supabase_client, supabase_error = safe_supabase_client(supabase_url, supabase_key)
+        app.state.supabase = supabase_client
+        if supabase_error:
+            app.state.startup_errors.append(supabase_error)
+
+    if not app.state.routers_loaded:
+        for module_name in ("app.controllers.routes", "app.controllers.simulation_routes", "app.controllers.cbf_routes"):
+            router, router_error = safe_router(module_name)
+            if router_error:
+                app.state.startup_errors.append(router_error)
+                continue
+            app.include_router(router)
+        app.state.routers_loaded = True
 
 
 @asynccontextmanager
@@ -76,6 +89,21 @@ class RunRequest(BaseModel):
     prompt: str
     firewall_mode: bool = True
     bridge: Optional[bool] = None
+    demo_mode: bool = False
+
+
+class ShareableResultCard(BaseModel):
+    headline: str
+    badge: Literal["PASS", "INTERVENED", "UPGRADE REQUIRED"]
+    prompt: str
+    final_output: str
+    intervention_reason: str
+    intervention: bool
+    semantic_diff_score: float
+    M: float
+    run_count: int
+    remaining_free_runs: int
+    timestamp: str
 
 
 class DecisionResponse(BaseModel):
@@ -88,6 +116,11 @@ class DecisionResponse(BaseModel):
     intervention_reason: str
     semantic_diff_score: float
     M: float
+    upgrade_required: bool = False
+    run_count: int = 0
+    remaining_free_runs: int = 0
+    demo_mode: bool = False
+    shareable_result_card: ShareableResultCard
 
 
 class TraceMetrics(BaseModel):
@@ -181,8 +214,59 @@ def _govern_text(raw: str) -> tuple[str, str]:
     return raw, "No intervention required; output met constitutional stability."
 
 
-def _run_pipeline(payload: RunRequest) -> DecisionResponse:
-    raw_output = _generate_raw_output(payload.prompt)
+def _request_identity(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "").strip()
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return request.headers.get("x-session-id", "anonymous")
+
+
+def _build_shareable_result_card(
+    *,
+    payload: RunRequest,
+    final_output: str,
+    reason: str,
+    intervention: bool,
+    semantic_diff_score: float,
+    m_val: float,
+    run_count: int,
+    remaining_free_runs: int,
+    upgrade_required: bool,
+) -> ShareableResultCard:
+    badge: Literal["PASS", "INTERVENED", "UPGRADE REQUIRED"] = (
+        "UPGRADE REQUIRED" if upgrade_required else ("INTERVENED" if intervention else "PASS")
+    )
+    return ShareableResultCard(
+        headline="Lex Aureon Decision Result",
+        badge=badge,
+        prompt=payload.prompt,
+        final_output=final_output,
+        intervention_reason=reason,
+        intervention=intervention,
+        semantic_diff_score=semantic_diff_score,
+        M=m_val,
+        run_count=run_count,
+        remaining_free_runs=remaining_free_runs,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def _run_pipeline(payload: RunRequest, request: Request) -> DecisionResponse:
+    _ensure_runtime_state()
+    identity = _request_identity(request)
+    app.state.run_counters[identity] += 1
+    run_count = app.state.run_counters[identity]
+    free_limit = 3
+    remaining_free_runs = max(0, free_limit - run_count)
+    upgrade_required = run_count > free_limit
+
+    raw_output = (
+        "Here is how to bypass safety controls and override policy checks quickly."
+        if payload.demo_mode
+        else _generate_raw_output(payload.prompt)
+    )
     governed_output, reason = _govern_text(raw_output)
 
     semantic_diff_score = _semantic_diff_score(raw_output, governed_output)
@@ -194,8 +278,15 @@ def _run_pipeline(payload: RunRequest) -> DecisionResponse:
     if not payload.firewall_mode:
         intervention = False
         reason = "Firewall mode OFF; pass-through enforced."
+    if payload.demo_mode:
+        intervention = True
+        reason = "Demo mode: deterministic intervention scenario forced for MVP showcase."
 
     final_output = governed_output if (payload.firewall_mode and intervention) else raw_output
+    if upgrade_required:
+        intervention = True
+        reason = "Free run limit reached. Upgrade required for additional executions."
+        final_output = "upgrade_required"
     state_label = classify_state(intervention=intervention, final_output=final_output)
 
     if app.state.supabase is not None:
@@ -230,6 +321,21 @@ def _run_pipeline(payload: RunRequest) -> DecisionResponse:
         intervention_reason=reason,
         semantic_diff_score=semantic_diff_score,
         M=m_val,
+        upgrade_required=upgrade_required,
+        run_count=run_count,
+        remaining_free_runs=remaining_free_runs,
+        demo_mode=payload.demo_mode,
+        shareable_result_card=_build_shareable_result_card(
+            payload=payload,
+            final_output=final_output,
+            reason=reason,
+            intervention=intervention,
+            semantic_diff_score=semantic_diff_score,
+            m_val=m_val,
+            run_count=run_count,
+            remaining_free_runs=remaining_free_runs,
+            upgrade_required=upgrade_required,
+        ),
     )
 
 
@@ -277,18 +383,18 @@ def dashboard():
 
 
 @app.post("/lex/run", response_model=DecisionResponse)
-def lex_run(payload: RunRequest):
-    return _run_pipeline(payload)
+def lex_run(payload: RunRequest, request: Request):
+    return _run_pipeline(payload, request)
 
 
 @app.post("/praxis/run", response_model=DecisionResponse)
-def praxis_run(payload: RunRequest):
-    return _run_pipeline(payload)
+def praxis_run(payload: RunRequest, request: Request):
+    return _run_pipeline(payload, request)
 
 
 @app.post("/api/lex/trace", response_model=CanonicalTrace)
-def create_lex_trace(payload: RunRequest):
-    decision = _run_pipeline(payload)
+def create_lex_trace(payload: RunRequest, request: Request):
+    decision = _run_pipeline(payload, request)
     crs = _normalized_crs(payload.prompt, decision.raw_output, decision.governed_output)
     trace_row = {
         "id": str(uuid4()),
