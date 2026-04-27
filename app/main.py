@@ -11,12 +11,16 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
+from lex_memory.engine import classify_state, run_memory_pipeline
+
 kernel = None
 
 
 def _ensure_runtime_state() -> None:
     if not hasattr(app.state, "kernel"):
         app.state.kernel = None
+    if not hasattr(app.state, "supabase"):
+        app.state.supabase = None
     if not hasattr(app.state, "startup_errors"):
         app.state.startup_errors = []
 
@@ -37,6 +41,15 @@ def _load_runtime_dependencies() -> None:
         app.state.kernel = kernel
     except Exception as exc:
         app.state.startup_errors.append(f"kernel init failed: {exc}")
+
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+    if supabase_url and supabase_key:
+        try:
+            supabase_mod = importlib.import_module("supabase")
+            app.state.supabase = supabase_mod.create_client(supabase_url, supabase_key)
+        except Exception as exc:
+            app.state.startup_errors.append(f"supabase init failed: {exc}")
 
 
 @asynccontextmanager
@@ -132,6 +145,31 @@ def _run_pipeline(payload: RunRequest) -> DecisionResponse:
         reason = "Firewall mode OFF; pass-through enforced."
 
     final_output = governed_output if (payload.firewall_mode and intervention) else raw_output
+    state_label = classify_state(intervention=intervention, final_output=final_output)
+
+    if app.state.supabase is not None:
+        try:
+            run_memory_pipeline(
+                prompt=payload.prompt,
+                raw_output=raw_output,
+                governed_output=governed_output,
+                final_output=final_output,
+                intervention=intervention,
+                intervention_reason=reason,
+                semantic_diff_score=semantic_diff_score,
+                M=m_val,
+                C=crs["C"],
+                R=crs["R"],
+                S=crs["S"],
+                state_label=state_label,
+                supabase=app.state.supabase,
+                model=getattr(app.state.kernel, "model_name", "unavailable"),
+                version=os.getenv("LEX_ENGINE_VERSION", "1.0.0"),
+                session_id=os.getenv("LEX_SESSION_ID"),
+                top_k=int(os.getenv("LEX_MEMORY_TOP_K", "5")),
+            )
+        except Exception as exc:
+            app.state.startup_errors.append(f"lex memory write failed: {exc}")
 
     return DecisionResponse(
         raw_output=raw_output,
