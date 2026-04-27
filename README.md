@@ -213,3 +213,22 @@ A new reader should immediately understand:
 - why runtime AI governance matters,
 - how to integrate it,
 - how the system monetizes.
+
+---
+
+## Frontend SaaS (Next.js)
+
+A sell-ready frontend lives in `frontend/` using Next.js App Router + Tailwind + Stripe Checkout.
+
+Key routes:
+- `/` Marketing landing page
+- `/demo` Conversion demo funnel
+- `/app` Dashboard for users
+- `/pricing` Subscription plans
+
+Start frontend:
+```bash
+cd frontend
+npm install
+npm run dev
+```
