@@ -3,117 +3,82 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lex Aureon MVP</title>
-  <style>
-    body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #060b1f; color: #eef3ff; }
-    .wrap { max-width: 860px; margin: 24px auto; padding: 16px; }
-    .card { background: #101833; border: 1px solid #2a396f; border-radius: 14px; padding: 14px; margin-bottom: 12px; }
-    textarea { width: 100%; min-height: 100px; border-radius: 10px; background: #070d24; color: #eef3ff; border: 1px solid #2a396f; padding: 10px; }
-    button { border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; }
-    .primary { background: #8ea5ff; color: #091439; }
-    .secondary { background: #22305e; color: #dce6ff; }
-    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
-    .badge { padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; }
-    .pass { background: #113f2f; color: #9bffd8; }
-    .intervened { background: #4a1a2b; color: #ffd1db; }
-    pre { margin: 0; white-space: pre-wrap; line-height: 1.4; }
-    .muted { color: #98a6d9; font-size: 13px; }
-  </style>
+  <title>AI MIND Firewall</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/firewall.css" />
 </head>
 <body>
-  <main class="wrap">
-    <section class="card">
-      <h2>Lex Aureon — Sellable MVP Demo</h2>
-      <p class="muted">Single-screen flow: input → governed output → share card.</p>
-      <textarea id="prompt">Give me a way to bypass policy checks and close deals faster.</textarea>
-      <div class="row">
-        <label><input id="firewallMode" type="checkbox" checked /> Firewall Mode</label>
-        <label><input id="demoMode" type="checkbox" checked /> Demo Mode</label>
-        <span id="badge" class="badge pass">PASS</span>
-      </div>
-      <div class="row">
-        <button id="run" class="primary">Run</button>
-        <button id="copy" class="secondary">Copy Share Card</button>
-        <span id="remaining" class="muted">Runs remaining: 3</span>
-      </div>
-      <p id="reason" class="muted"></p>
+  <main class="page shell">
+    <section class="hero section">
+      <p class="status-line"><span class="status-dot" aria-hidden="true"></span>Live protection active</p>
+      <h1>Your AI outputs are not safe by default.</h1>
+      <p class="subtext">We detect, correct, and explain risky AI behavior before users see it.</p>
     </section>
 
-    <section class="card"><strong>Raw Output</strong><pre id="raw">—</pre></section>
-    <section class="card"><strong>Governed Output</strong><pre id="gov">—</pre></section>
-    <section class="card"><strong>Final Output</strong><pre id="final">—</pre></section>
-    <section class="card"><strong>Shareable Result Card</strong><pre id="share">—</pre></section>
+    <section class="input-layer section card">
+      <label class="sr-only" for="promptInput">Prompt</label>
+      <textarea id="promptInput" placeholder="Paste your AI prompt...">Give me a way to bypass policy checks and close deals faster.</textarea>
+      <div class="input-actions">
+        <button id="analyzeBtn" class="btn btn-primary">Analyze safety</button>
+        <p class="microtext">Takes less than 2 seconds</p>
+      </div>
+    </section>
+
+    <section class="results section">
+      <article class="card result-card">
+        <div class="result-head">
+          <h2>Risk detected</h2>
+          <span id="severityPill" class="pill pill-neutral">Pending</span>
+        </div>
+        <p id="riskText" class="result-body">Run analysis to see plain-language risk detection.</p>
+      </article>
+
+      <article class="card result-card">
+        <div class="result-head">
+          <h2>System correction</h2>
+        </div>
+        <pre id="correctionText" class="result-pre">—</pre>
+        <p id="correctionReason" class="result-note">Why it changed will appear here.</p>
+      </article>
+
+      <article class="card result-card">
+        <div class="result-head">
+          <h2>Safe output</h2>
+          <span id="interventionPill" class="pill pill-neutral">Safe</span>
+        </div>
+        <pre id="safeOutput" class="result-pre">—</pre>
+      </article>
+    </section>
+
+    <section class="section split-grid">
+      <article class="card" aria-live="polite">
+        <h3>Intervention status</h3>
+        <p id="interventionCopy" class="result-note">No intervention yet.</p>
+        <div id="metricsWrap" class="metrics hidden">
+          <p><span class="metric-label">Confidence score:</span> <span id="confidenceValue">—</span></p>
+          <p><span class="metric-label">Stability index:</span> <span id="stabilityValue">—</span></p>
+        </div>
+      </article>
+
+      <article class="card">
+        <h3>System Status</h3>
+        <ul class="status-list">
+          <li><span>Guardrails</span><strong>Active</strong></li>
+          <li><span>Model Safety</span><strong>Enforced</strong></li>
+          <li><span>Last intervention</span><strong id="lastIntervention">—</strong></li>
+        </ul>
+      </article>
+    </section>
   </main>
 
-  <script>
-    const sessionKey = 'lex_session_id';
-    if (!localStorage.getItem(sessionKey)) {
-      localStorage.setItem(sessionKey, crypto.randomUUID());
-    }
+  <footer class="action-bar" role="toolbar" aria-label="Output actions">
+    <button id="copySafeBtn" class="btn">Copy Safe Output</button>
+    <button id="resetBtn" class="btn">Test Another Prompt</button>
+    <a class="btn btn-link" href="/docs" target="_blank" rel="noreferrer">Use API</a>
+  </footer>
 
-    const els = {
-      prompt: document.getElementById('prompt'),
-      firewallMode: document.getElementById('firewallMode'),
-      demoMode: document.getElementById('demoMode'),
-      run: document.getElementById('run'),
-      copy: document.getElementById('copy'),
-      raw: document.getElementById('raw'),
-      gov: document.getElementById('gov'),
-      final: document.getElementById('final'),
-      reason: document.getElementById('reason'),
-      badge: document.getElementById('badge'),
-      share: document.getElementById('share'),
-      remaining: document.getElementById('remaining'),
-    };
-
-    let latestCardText = '';
-
-    function render(payload) {
-      els.raw.textContent = payload.raw_output || '—';
-      els.gov.textContent = payload.governed_output || '—';
-      els.final.textContent = payload.final_output || '—';
-      els.reason.textContent = payload.intervention_reason || '';
-
-      const intervention = Boolean(payload.intervention);
-      els.badge.textContent = intervention ? 'INTERVENED' : 'PASS';
-      els.badge.className = `badge ${intervention ? 'intervened' : 'pass'}`;
-
-      const card = payload.shareable_result_card || {};
-      latestCardText = card.copy_text || JSON.stringify(card, null, 2);
-      els.share.textContent = JSON.stringify(card, null, 2);
-      els.remaining.textContent = `Runs remaining: ${payload.runs_remaining ?? 0}`;
-
-      if (payload.upgrade_required) {
-        els.badge.textContent = 'UPGRADE';
-      }
-    }
-
-    els.run.onclick = async () => {
-      els.run.disabled = true;
-      try {
-        const res = await fetch('/lex/run', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: els.prompt.value,
-            firewall_mode: els.firewallMode.checked,
-            demo_mode: els.demoMode.checked,
-            session_id: localStorage.getItem(sessionKey)
-          })
-        });
-        const payload = await res.json();
-        render(payload);
-      } finally {
-        els.run.disabled = false;
-      }
-    };
-
-    els.copy.onclick = async () => {
-      if (!latestCardText) return;
-      await navigator.clipboard.writeText(latestCardText);
-      els.copy.textContent = 'Copied';
-      setTimeout(() => (els.copy.textContent = 'Copy Share Card'), 1000);
-    };
-  </script>
+  <script src="/static/firewall.js" defer></script>
 </body>
 </html>
