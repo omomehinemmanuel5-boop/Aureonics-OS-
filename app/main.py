@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.safe_boot import load_kernel_safely
+from sovereign_kernel_v2 import SovereignKernel
 
 
 class RunRequest(BaseModel):
@@ -46,6 +47,7 @@ class CheckoutStubResponse(BaseModel):
 
 FREE_DAILY_LIMIT = 10
 PRO_MONTHLY_LIMIT = 2000
+_KERNEL_SINGLETON: SovereignKernel | None = None
 
 
 def _ensure_state(app: FastAPI) -> None:
@@ -55,6 +57,13 @@ def _ensure_state(app: FastAPI) -> None:
         app.state.startup_errors = []
     if not hasattr(app.state, "usage_counts"):
         app.state.usage_counts = {}
+
+
+def _get_kernel() -> SovereignKernel:
+    global _KERNEL_SINGLETON
+    if _KERNEL_SINGLETON is None:
+        _KERNEL_SINGLETON = SovereignKernel()
+    return _KERNEL_SINGLETON
 
 
 def _now() -> datetime:
@@ -124,6 +133,8 @@ def _consume_quota(app: FastAPI, identity: str, plan: str) -> tuple[bool, int | 
 
 def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> DecisionResponse:
     _ensure_state(app)
+    if app.state.kernel is None:
+        app.state.kernel = _get_kernel()
     identity = _request_identity(request)
     plan = _get_plan(request)
     allowed, remaining = _consume_quota(app, identity, plan)
@@ -196,12 +207,12 @@ def _get_kernel() -> object:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.kernel = None
+    app.state.kernel = _get_kernel()
     app.state.startup_errors = []
     app.state.usage_counts = {}
 
     kernel_result = load_kernel_safely()
-    app.state.kernel = kernel_result.get("kernel")
+    app.state.kernel = kernel_result.get("kernel") or app.state.kernel
     if kernel_result.get("error"):
         app.state.startup_errors.append(str(kernel_result["error"]))
     yield
