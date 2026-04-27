@@ -3,30 +3,79 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lex Dashboard</title>
+  <title>Aureonics Console</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/firewall.css" />
 </head>
-<body>
+<body class="aur-bg">
   <main class="dashboard-shell">
-    <header class="dash-header">
+    <header class="dash-header glass">
       <a href="/" class="text-link">← Back to landing</a>
-      <h1>Lex Dashboard</h1>
+      <h1>Aureonics Constitutional Console</h1>
       <label class="dev-toggle"><input type="checkbox" id="devMode" /> Developer mode</label>
     </header>
 
+    <section class="console-hero glow-card">
+      <div>
+        <p class="eyebrow">Live Constitutional Runtime</p>
+        <h2>Run prompts through a visible governor, not a black box.</h2>
+        <p class="subtext">Watch C/R/S metrics, projection logic, and intervention traces update as each request executes.</p>
+      </div>
+      <div class="status-badges">
+        <span class="badge-pill">τ floor: 0.05</span>
+        <span class="badge-pill">ADV entropy: active</span>
+      </div>
+    </section>
+
     <section class="dashboard-grid">
-      <aside class="panel">
-        <h2>Input</h2>
-        <textarea id="promptInput" placeholder="Paste a prompt to run governed inference..."></textarea>
-        <button id="runBtn" class="primary-btn">Run</button>
+      <aside class="panel glow-card">
+        <h2>Sovereign Prompt Input</h2>
+        <textarea id="promptInput" placeholder="Paste a prompt to run governed inference...">Refine this contract to keep obligations balanced across all parties.</textarea>
+        <div id="threatPreview" class="threat-preview hidden"></div>
+        <div class="precalc-card">
+          <div class="precalc-head">
+            <span>Pre-Send Invariance Scan</span>
+            <strong id="riskBadge" class="risk-badge risk-low">LOW RISK</strong>
+          </div>
+          <p id="precalcSummary" class="precalc-summary">Draft appears constitutionally safe so far.</p>
+          <div class="precalc-grid">
+            <div><span>Predicted M(t)</span><strong id="predictedM">0.170</strong></div>
+            <div><span>Risk score</span><strong id="riskScore">0.120</strong></div>
+            <div><span>Prompt entropy</span><strong id="promptEntropy">0.000</strong></div>
+          </div>
+          <div class="mini-bars">
+            <label>C pre-estimate <span id="preCVal">0.330</span></label>
+            <div class="metric-track"><div id="preCBar" class="metric-fill c"></div></div>
+            <label>R pre-estimate <span id="preRVal">0.330</span></label>
+            <div class="metric-track"><div id="preRBar" class="metric-fill r"></div></div>
+            <label>S pre-estimate <span id="preSVal">0.340</span></label>
+            <div class="metric-track"><div id="preSBar" class="metric-fill s"></div></div>
+          </div>
+        </div>
+        <div class="share-row">
+          <button id="runBtn" class="primary-btn">Run Constitutional Analysis</button>
+          <button id="fillDemoBtn" class="ghost-btn">Insert Demo Threat</button>
+        </div>
       </aside>
 
-      <section class="panel">
-        <h2>Final Output</h2>
-        <div id="finalOutput" class="output-box">No result yet.</div>
+      <section class="panel glow-card">
+        <h2>Output Pipeline</h2>
+        <div class="output-panels">
+          <div class="stage-card">
+            <header><span class="stage-dot raw"></span>Raw Input</header>
+            <div id="rawOutput" class="output-box">No result yet.</div>
+          </div>
+          <div class="stage-card">
+            <header><span class="stage-dot governed"></span>Governor Analysis</header>
+            <div id="governedOutput" class="output-box">Awaiting run...</div>
+          </div>
+          <div class="stage-card">
+            <header><span class="stage-dot final"></span>Constitutional Response</header>
+            <div id="finalOutput" class="output-box">Awaiting run...</div>
+          </div>
+        </div>
         <div class="share-row">
           <button id="copyBtn" class="ghost-btn">Copy Output</button>
           <button id="shareBtn" class="ghost-btn">Create Share Card</button>
@@ -35,12 +84,24 @@
         <div id="developerTrace" class="developer-trace hidden"></div>
       </section>
 
-      <aside class="panel metric-panel">
-        <h2>Governance Score</h2>
-        <p><span>M</span><strong id="mValue">—</strong></p>
+      <aside class="panel metric-panel glow-card">
+        <h2>Governance Math</h2>
+        <p><span>Stability Margin M(t)</span><strong id="mValue">—</strong></p>
         <p><span>Intervention</span><strong id="interventionBadge" class="badge pass">PASS</strong></p>
         <p><span>Plan</span><strong id="planValue">free</strong></p>
         <p><span>Remaining</span><strong id="remainingValue">—</strong></p>
+        <p><span>Semantic Diff</span><strong id="semanticValue">—</strong></p>
+
+        <div class="metric-bars">
+          <label>C <span id="cVal">—</span></label>
+          <div class="metric-track"><div id="cBar" class="metric-fill c"></div></div>
+          <label>R <span id="rVal">—</span></label>
+          <div class="metric-track"><div id="rBar" class="metric-fill r"></div></div>
+          <label>S <span id="sVal">—</span></label>
+          <div class="metric-track"><div id="sBar" class="metric-fill s"></div></div>
+        </div>
+
+        <canvas id="simplexCanvas" width="280" height="180"></canvas>
       </aside>
     </section>
   </main>
