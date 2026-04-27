@@ -1,84 +1,45 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AI MIND Firewall</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lex API — Governed AI Responses</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/firewall.css" />
 </head>
 <body>
-  <main class="page shell">
-    <section class="hero section">
-      <p class="status-line"><span class="status-dot" aria-hidden="true"></span>Live protection active</p>
-      <h1>Your AI outputs are not safe by default.</h1>
-      <p class="subtext">We detect, correct, and explain risky AI behavior before users see it.</p>
-    </section>
+  <main class="landing-wrap">
+    <nav class="top-nav">
+      <strong>Lex API</strong>
+      <a class="ghost-btn" href="/dashboard">Try Live Demo</a>
+    </nav>
 
-    <section class="input-layer section card">
-      <label class="sr-only" for="promptInput">Prompt</label>
-      <textarea id="promptInput" placeholder="Paste your AI prompt...">Give me a way to bypass policy checks and close deals faster.</textarea>
-      <div class="input-actions">
-        <button id="analyzeBtn" class="btn btn-primary">Analyze safety</button>
-        <p class="microtext">Takes less than 2 seconds</p>
+    <section class="hero">
+      <p class="eyebrow">Governed AI Execution Layer</p>
+      <h1>Governed AI that refuses failure</h1>
+      <p class="subtext">Every response is measured, scored, and stabilized before delivery.</p>
+      <div class="hero-actions">
+        <a class="primary-btn" href="/dashboard">Try Live Demo</a>
+        <a class="ghost-btn" href="/pricing" target="_blank" rel="noreferrer">View Pricing API</a>
       </div>
     </section>
 
-    <section class="results section">
-      <article class="card result-card">
-        <div class="result-head">
-          <h2>Risk detected</h2>
-          <span id="severityPill" class="pill pill-neutral">Pending</span>
-        </div>
-        <p id="riskText" class="result-body">Run analysis to see plain-language risk detection.</p>
+    <section class="three-up">
+      <article>
+        <h2>Paste prompt</h2>
+        <p>Send one call to <code>POST /lex/run</code>.</p>
       </article>
-
-      <article class="card result-card">
-        <div class="result-head">
-          <h2>System correction</h2>
-        </div>
-        <pre id="correctionText" class="result-pre">—</pre>
-        <p id="correctionReason" class="result-note">Why it changed will appear here.</p>
+      <article>
+        <h2>Governed output</h2>
+        <p>Unsafe or unstable responses are corrected before delivery.</p>
       </article>
-
-      <article class="card result-card">
-        <div class="result-head">
-          <h2>Safe output</h2>
-          <span id="interventionPill" class="pill pill-neutral">Safe</span>
-        </div>
-        <pre id="safeOutput" class="result-pre">—</pre>
-      </article>
-    </section>
-
-    <section class="section split-grid">
-      <article class="card" aria-live="polite">
-        <h3>Intervention status</h3>
-        <p id="interventionCopy" class="result-note">No intervention yet.</p>
-        <div id="metricsWrap" class="metrics hidden">
-          <p><span class="metric-label">Confidence score:</span> <span id="confidenceValue">—</span></p>
-          <p><span class="metric-label">Stability index:</span> <span id="stabilityValue">—</span></p>
-        </div>
-      </article>
-
-      <article class="card">
-        <h3>System Status</h3>
-        <ul class="status-list">
-          <li><span>Guardrails</span><strong>Active</strong></li>
-          <li><span>Model Safety</span><strong>Enforced</strong></li>
-          <li><span>Last intervention</span><strong id="lastIntervention">—</strong></li>
-        </ul>
+      <article>
+        <h2>Pay to scale</h2>
+        <p>Free, Pro, and Enterprise plans with Stripe-ready billing stubs.</p>
       </article>
     </section>
   </main>
-
-  <footer class="action-bar" role="toolbar" aria-label="Output actions">
-    <button id="copySafeBtn" class="btn">Copy Safe Output</button>
-    <button id="resetBtn" class="btn">Test Another Prompt</button>
-    <a class="btn btn-link" href="/docs" target="_blank" rel="noreferrer">Use API</a>
-  </footer>
-
-  <script src="/static/firewall.js" defer></script>
 </body>
 </html>
