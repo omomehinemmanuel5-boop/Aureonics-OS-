@@ -2,12 +2,18 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+import base64
+import hashlib
+import hmac
+import json
+import os
+import secrets
 from difflib import SequenceMatcher
 from typing import Literal
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -34,6 +40,24 @@ class DecisionResponse(BaseModel):
     watermark: str | None = None
     remaining_runs: int | None = None
     metrics: dict[str, float | int] | None = None
+
+
+class RegisterRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=320)
+    password: str = Field(min_length=10, max_length=128)
+    company_name: str = Field(min_length=2, max_length=160)
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=320)
+    password: str = Field(min_length=10, max_length=128)
+
+
+class AuthTokenResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_at: str
+    user: dict[str, str]
 
 
 class CheckoutStubRequest(BaseModel):
@@ -63,6 +87,77 @@ PRO_MONTHLY_LIMIT = 2000
 _KERNEL_SINGLETON: SovereignKernel | None = None
 
 
+AUTH_TOKEN_TTL_HOURS = 12
+_PASSWORD_ITERATIONS = 120_000
+
+
+def _token_secret() -> str:
+    return os.getenv("LEX_AUTH_SECRET", "lex-dev-secret-change-me")
+
+
+def _urlsafe_b64(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode().rstrip("=")
+
+
+def _urlsafe_unb64(data: str) -> bytes:
+    return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
+
+
+def _hash_password(password: str, salt: str | None = None) -> str:
+    salt_bytes = (salt or secrets.token_hex(16)).encode("utf-8")
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt_bytes, _PASSWORD_ITERATIONS)
+    return f"pbkdf2_sha256${_PASSWORD_ITERATIONS}${salt_bytes.decode()}${digest.hex()}"
+
+
+def _verify_password(password: str, encoded: str) -> bool:
+    try:
+        _, rounds, salt, digest = encoded.split("$", 3)
+    except ValueError:
+        return False
+    test_digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), int(rounds)).hex()
+    return hmac.compare_digest(test_digest, digest)
+
+
+def _issue_access_token(user_id: str, email: str) -> tuple[str, datetime]:
+    expiry = _now() + timedelta(hours=AUTH_TOKEN_TTL_HOURS)
+    payload = {"sub": user_id, "email": email, "exp": int(expiry.timestamp())}
+    payload_json = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    encoded_payload = _urlsafe_b64(payload_json)
+    signature = hmac.new(_token_secret().encode("utf-8"), encoded_payload.encode("utf-8"), hashlib.sha256).digest()
+    return f"{encoded_payload}.{_urlsafe_b64(signature)}", expiry
+
+
+def _decode_token(token: str) -> dict[str, str | int] | None:
+    try:
+        payload_b64, signature_b64 = token.split(".", 1)
+        expected = hmac.new(_token_secret().encode("utf-8"), payload_b64.encode("utf-8"), hashlib.sha256).digest()
+        if not hmac.compare_digest(expected, _urlsafe_unb64(signature_b64)):
+            return None
+        payload = json.loads(_urlsafe_unb64(payload_b64).decode("utf-8"))
+    except Exception:
+        return None
+
+    exp = int(payload.get("exp", 0))
+    if exp <= int(_now().timestamp()):
+        return None
+    return payload
+
+
+def _normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def _auth_user(request: Request) -> dict[str, str] | None:
+    return getattr(request.state, "auth_user", None)
+
+
+def _require_auth(request: Request) -> dict[str, str]:
+    user = _auth_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user
+
+
 def _ensure_state(app: FastAPI) -> None:
     if not hasattr(app.state, "kernel"):
         app.state.kernel = None
@@ -70,6 +165,8 @@ def _ensure_state(app: FastAPI) -> None:
         app.state.startup_errors = []
     if not hasattr(app.state, "usage_counts"):
         app.state.usage_counts = {}
+    if not hasattr(app.state, "users"):
+        app.state.users = {}
 
 
 def _get_kernel() -> SovereignKernel:
@@ -84,6 +181,9 @@ def _now() -> datetime:
 
 
 def _request_identity(request: Request) -> str:
+    user = _auth_user(request)
+    if user:
+        return f"user:{user.get('id', 'unknown')}"
     forwarded = request.headers.get("x-forwarded-for", "").strip()
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -238,6 +338,7 @@ async def lifespan(app: FastAPI):
     app.state.kernel = _get_kernel()
     app.state.startup_errors = []
     app.state.usage_counts = {}
+    app.state.users = {}
 
     kernel_result = load_kernel_safely()
     app.state.kernel = kernel_result.get("kernel") or app.state.kernel
@@ -257,11 +358,26 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
     @app.middleware("http")
-    async def subscription_status_middleware(request: Request, call_next):
+    async def auth_subscription_middleware(request: Request, call_next):
         _ensure_state(app)
+        request.state.auth_user = None
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            payload = _decode_token(auth_header.split(" ", 1)[1].strip())
+            if payload:
+                request.state.auth_user = {
+                    "id": str(payload.get("sub", "")),
+                    "email": str(payload.get("email", "")),
+                }
+
         request.state.subscription_plan = _get_plan(request)
+        if request.state.subscription_plan in {"pro", "enterprise"} and request.state.auth_user is None:
+            return JSONResponse(status_code=401, content={"detail": "Authenticated account required for paid plans"})
+
         response = await call_next(request)
         response.headers["x-subscription-plan"] = request.state.subscription_plan
+        if request.state.auth_user:
+            response.headers["x-auth-user"] = request.state.auth_user.get("email", "")
         return response
 
     @app.get("/", include_in_schema=False)
@@ -280,6 +396,54 @@ def create_app() -> FastAPI:
             "degraded": len(app.state.startup_errors) > 0,
             "kernel_ready": bool(app.state.kernel is not None),
             "errors": app.state.startup_errors,
+        }
+
+    @app.post("/auth/register", response_model=AuthTokenResponse)
+    def auth_register(payload: RegisterRequest):
+        _ensure_state(app)
+        email = _normalize_email(payload.email)
+        if email in app.state.users:
+            raise HTTPException(status_code=409, detail="Account already exists")
+
+        user_id = f"usr_{secrets.token_hex(8)}"
+        app.state.users[email] = {
+            "id": user_id,
+            "email": email,
+            "company_name": payload.company_name.strip(),
+            "password_hash": _hash_password(payload.password),
+            "created_at": _now().isoformat(),
+        }
+        token, expires = _issue_access_token(user_id, email)
+        return AuthTokenResponse(
+            access_token=token,
+            expires_at=expires.isoformat(),
+            user={"id": user_id, "email": email, "company_name": payload.company_name.strip()},
+        )
+
+    @app.post("/auth/login", response_model=AuthTokenResponse)
+    def auth_login(payload: LoginRequest):
+        _ensure_state(app)
+        email = _normalize_email(payload.email)
+        user = app.state.users.get(email)
+        if not user or not _verify_password(payload.password, user.get("password_hash", "")):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        token, expires = _issue_access_token(str(user["id"]), email)
+        return AuthTokenResponse(
+            access_token=token,
+            expires_at=expires.isoformat(),
+            user={"id": str(user["id"]), "email": email, "company_name": str(user["company_name"])},
+        )
+
+    @app.get("/auth/me")
+    def auth_me(request: Request):
+        user = _require_auth(request)
+        record = app.state.users.get(user["email"], {})
+        return {
+            "id": user["id"],
+            "email": user["email"],
+            "company_name": record.get("company_name", ""),
+            "plan": request.state.subscription_plan,
         }
 
     @app.get("/pricing")
@@ -329,7 +493,8 @@ def create_app() -> FastAPI:
         return _run_pipeline(app, payload, request)
 
     @app.post("/billing/checkout", response_model=CheckoutStubResponse)
-    def billing_checkout(payload: CheckoutStubRequest):
+    def billing_checkout(payload: CheckoutStubRequest, request: Request):
+        _require_auth(request)
         now_dt = _now()
         now_token = int(now_dt.timestamp())
         reference = f"LEX-{payload.plan.upper()}-{now_token}"
