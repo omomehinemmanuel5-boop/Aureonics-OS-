@@ -9,4 +9,10 @@ export type LexResponse = {
   upgrade_required?: boolean;
   run_count?: number;
   remaining_free_runs?: number;
+  metrics?: {
+    entropy: number;
+    meaning: number;
+    predicted_risk: number;
+    actual_intervention: number;
+  };
 };
