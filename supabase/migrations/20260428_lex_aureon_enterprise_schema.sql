@@ -45,8 +45,8 @@ create table if not exists ai_logs (
   final_output text,
   risk_score numeric(5,4),
   risk_explanation text,
+  previous_hash text not null,
   immutable_hash text not null,
-  prev_hash text,
   trace jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
@@ -75,31 +75,6 @@ create index if not exists idx_ai_logs_org_created on ai_logs(organization_id, c
 create index if not exists idx_policies_org_enabled on policies(organization_id, enabled);
 create index if not exists idx_vector_memory_org on vector_memory(organization_id);
 
-alter table organizations enable row level security;
-alter table users enable row level security;
-alter table policies enable row level security;
-alter table ai_logs enable row level security;
-alter table governance_metrics enable row level security;
-alter table vector_memory enable row level security;
-
-create policy organizations_isolation on organizations
-  using (id::text = auth.jwt()->>'org_id');
-create policy users_isolation on users
-  using (organization_id::text = auth.jwt()->>'org_id')
-  with check (organization_id::text = auth.jwt()->>'org_id');
-create policy policies_isolation on policies
-  using (organization_id::text = auth.jwt()->>'org_id')
-  with check (organization_id::text = auth.jwt()->>'org_id');
-create policy ai_logs_isolation on ai_logs
-  using (organization_id::text = auth.jwt()->>'org_id')
-  with check (organization_id::text = auth.jwt()->>'org_id');
-create policy governance_metrics_isolation on governance_metrics
-  using (organization_id::text = auth.jwt()->>'org_id')
-  with check (organization_id::text = auth.jwt()->>'org_id');
-create policy vector_memory_isolation on vector_memory
-  using (organization_id::text = auth.jwt()->>'org_id')
-  with check (organization_id::text = auth.jwt()->>'org_id');
-
 create or replace function match_governance_memories(
   p_organization_id uuid,
   query_embedding vector(1536),
@@ -119,3 +94,43 @@ as $$
   order by vm.embedding <=> query_embedding
   limit match_count;
 $$;
+
+-- Row-level security for multi-tenant isolation.
+alter table organizations enable row level security;
+alter table users enable row level security;
+alter table policies enable row level security;
+alter table ai_logs enable row level security;
+alter table governance_metrics enable row level security;
+alter table vector_memory enable row level security;
+
+create policy org_isolation_users on users
+  using (organization_id = (auth.jwt() ->> 'organization_id')::uuid)
+  with check (organization_id = (auth.jwt() ->> 'organization_id')::uuid);
+
+create policy org_isolation_policies on policies
+  using (organization_id = (auth.jwt() ->> 'organization_id')::uuid)
+  with check (organization_id = (auth.jwt() ->> 'organization_id')::uuid);
+
+create policy org_isolation_ai_logs on ai_logs
+  using (organization_id = (auth.jwt() ->> 'organization_id')::uuid)
+  with check (organization_id = (auth.jwt() ->> 'organization_id')::uuid);
+
+create policy org_isolation_governance_metrics on governance_metrics
+  using (organization_id = (auth.jwt() ->> 'organization_id')::uuid)
+  with check (organization_id = (auth.jwt() ->> 'organization_id')::uuid);
+
+create policy org_isolation_vector_memory on vector_memory
+  using (organization_id = (auth.jwt() ->> 'organization_id')::uuid)
+  with check (organization_id = (auth.jwt() ->> 'organization_id')::uuid);
+
+-- append-only audit log enforcement.
+create or replace function prevent_ai_log_updates()
+returns trigger as $$
+begin
+  raise exception 'ai_logs is append-only';
+end;
+$$ language plpgsql;
+
+drop trigger if exists trg_ai_logs_no_update on ai_logs;
+create trigger trg_ai_logs_no_update before update or delete on ai_logs
+for each row execute function prevent_ai_log_updates();

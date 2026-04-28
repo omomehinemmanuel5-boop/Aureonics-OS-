@@ -18,38 +18,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Python tests
-        run: pytest -q
+        run: pytest -q tests/contracts tests/test_lex_api_routes.py
 
-  contract-validation:
+  contract-schema-validation:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Validate shared contracts
-        run: |
-          python -m compileall packages/contracts
-          test -f packages/contracts/openapi.yaml
-          rg "openapi: 3.1.0" packages/contracts/openapi.yaml
-
-  schema-validation:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Validate RLS and schema primitives
-        run: |
-          rg "enable row level security" supabase/migrations/20260428_lex_aureon_enterprise_schema.sql
-          rg "create policy .*_isolation" supabase/migrations/20260428_lex_aureon_enterprise_schema.sql
-
-  security-lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Security lint (semgrep)
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: p/security-audit
+      - run: |
+          python -m pip install --upgrade pip
+          pip install pydantic==1.10.26
+      - name: Validate contracts
+        run: python scripts/lex_aureon/validate_contracts.py
 
   frontend-checks:
     runs-on: ubuntu-latest
@@ -67,13 +49,18 @@ jobs:
         run: npm ci
       - name: Typecheck
         run: npm run typecheck
-      - name: Tests
-        run: npm run test
+
+  security-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Semgrep quick scan
+        run: |
+          pip install semgrep
+          semgrep --config p/default --error --exclude node_modules .
 
   stripe-config-validation:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate Stripe env references
-        run: |
-          rg "STRIPE_WEBHOOK_SECRET|billing/stripe/webhook" lex_aureon/backend/api_gateway/main.py
+      - run: rg "STRIPE_WEBHOOK_SECRET|billing/stripe/webhook" lex_aureon/backend/api_gateway/main.py

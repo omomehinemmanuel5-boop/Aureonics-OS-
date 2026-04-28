@@ -1,31 +1,30 @@
-# Lex Aureon (Enterprise SaaS Scaffold)
+# Lex Aureon (Fortune-500 Hardened Scaffold)
 
-## Updated monorepo structure
+## Monorepo structure
 
-- `packages/contracts/`
-  - `schemas.py` (shared Pydantic contract layer)
-  - `openapi.yaml` (cross-service API contract)
-- `lex_aureon/backend/common/`
-  - `config.py` (env validation)
-  - `observability.py` (JSON logs + request_id/trace_id propagation)
-  - `tenant.py` (org isolation enforcement)
-  - `event_bus.py` (event-driven abstraction)
-  - `circuit_breaker.py` (degradation/fallback guard)
-  - `repository.py` (append-only hash-chained audit persistence)
-- `lex_aureon/backend/*_service/`
-  - FastAPI microservices with org middleware and structured telemetry
-- `lex_aureon/backend/governance_engine/core.py`
-  - deterministic pure functions: `risk_score`, `governance_transform`
-- `lex_aureon/deploy/docker-compose.yml`
-  - full local stack deployment
-- `lex_aureon/deploy/render/render.yaml`
-  - production Render blueprint
+- `packages/contracts/` shared contract layer (strict typed schemas).
+- `lex_aureon/backend/common/` security, middleware, env validation, structured logging, repository.
+- `lex_aureon/backend/events/` event bus abstraction (Redis-ready).
+- `lex_aureon/backend/*_service/` independent FastAPI microservices.
+- `lex_aureon/backend/governance_engine/core.py` deterministic governance module.
+- `supabase/migrations/20260428_lex_aureon_enterprise_schema.sql` multi-tenant schema + RLS.
+- `docker-compose.lex-aureon.yml` local full-stack deployment wiring.
+- `.github/workflows/` CI + Render deploy workflows.
 
-## Guarantees implemented
+## Enterprise guarantees in this scaffold
 
-- Multi-tenant isolation via service-level org checks + Supabase RLS.
-- Event emission: `AI_INGESTED`, `AI_GOVERNED`, `POLICY_TRIGGERED`, `AUDIT_LOGGED`, degradation event.
-- Audit immutability through append-only records with hash chaining (`prev_hash -> immutable_hash`).
-- Circuit breaker fallback mode: `PASS_THROUGH_SAFE`.
-- Enterprise API gateway with auth validation, policy hook, org rate limiting, request logging.
-- CI/CD upgraded with schema checks, contract validation, security linting, deploy rollback workflow.
+- Shared contracts to enforce cross-service type consistency.
+- Org isolation at middleware layer + database row-level policies.
+- Event-driven audit/governance lifecycle events.
+- Append-only audit logs with cryptographic hash chaining.
+- Circuit breaker fallback path (`PASS_THROUGH_SAFE`) for governance degradation.
+- Structured JSON logging with request + trace propagation headers.
+- Centralized gateway controls (auth, rate-limit, policy hook, request logs).
+
+## Remaining hardening tasks before go-live
+
+- Replace mock JWT parser with OIDC/JWKS verification.
+- Replace in-memory repository with PostgreSQL/Supabase adapters.
+- Wire Redis/NATS client for durable event streaming.
+- Implement formal PDF renderer and signed compliance bundles.
+- Add SAST/DAST and container image scanning gates.

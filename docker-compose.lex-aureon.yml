@@ -1,0 +1,67 @@
+version: "3.9"
+services:
+  api-gateway:
+    build:
+      context: .
+      dockerfile: lex_aureon/backend/api_gateway/Dockerfile
+    environment:
+      LEX_ENV: development
+      JWT_SECRET: dev-secret
+      STRIPE_WEBHOOK_SECRET: dev-secret
+    ports:
+      - "8010:8000"
+
+  ingestion-service:
+    build:
+      context: .
+      dockerfile: lex_aureon/backend/ingestion_service/Dockerfile
+    environment:
+      LEX_ENV: development
+      JWT_SECRET: dev-secret
+      STRIPE_WEBHOOK_SECRET: dev-secret
+    ports:
+      - "8011:8000"
+
+  governance-engine:
+    build:
+      context: .
+      dockerfile: lex_aureon/backend/governance_engine/Dockerfile
+    environment:
+      LEX_ENV: development
+      JWT_SECRET: dev-secret
+      STRIPE_WEBHOOK_SECRET: dev-secret
+    ports:
+      - "8012:8000"
+
+  policy-engine:
+    build:
+      context: .
+      dockerfile: lex_aureon/backend/policy_engine/Dockerfile
+    environment:
+      LEX_ENV: development
+      JWT_SECRET: dev-secret
+      STRIPE_WEBHOOK_SECRET: dev-secret
+    ports:
+      - "8013:8000"
+
+  audit-log-service:
+    build:
+      context: .
+      dockerfile: lex_aureon/backend/audit_log_service/Dockerfile
+    environment:
+      LEX_ENV: development
+      JWT_SECRET: dev-secret
+      STRIPE_WEBHOOK_SECRET: dev-secret
+    ports:
+      - "8014:8000"
+
+  metrics-service:
+    build:
+      context: .
+      dockerfile: lex_aureon/backend/metrics_service/Dockerfile
+    environment:
+      LEX_ENV: development
+      JWT_SECRET: dev-secret
+      STRIPE_WEBHOOK_SECRET: dev-secret
+    ports:
+      - "8015:8000"

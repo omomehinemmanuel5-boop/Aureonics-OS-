@@ -1,32 +1,19 @@
-from datetime import datetime, timezone
-
 from fastapi import Depends, FastAPI, Request, Response
 
-from lex_aureon.backend.common.event_bus import event_bus
-from lex_aureon.backend.common.models import EventEnvelope, EventType
-from lex_aureon.backend.common.observability import install_observability_middleware
+from lex_aureon.backend.common.middleware import enforce_org_scope
 from lex_aureon.backend.common.repository import repository
 from lex_aureon.backend.common.security import Principal, parse_mock_jwt
-from lex_aureon.backend.common.tenant import enforce_org_scope
+from lex_aureon.backend.events.bus import build_event, event_bus
+from packages.contracts.schemas import EventType
 
-app = FastAPI(title="Lex Aureon Audit Log Service", version="1.1.0")
-install_observability_middleware(app)
+app = FastAPI(title="Lex Aureon Audit Log Service", version="2.0.0")
 
 
 @app.get("/audit")
 def list_audit(request: Request, principal: Principal = Depends(parse_mock_jwt)):
     enforce_org_scope(request, principal)
     rows = repository.list_logs(principal.organization_id)
-    event_bus.publish(
-        EventEnvelope(
-            event_type=EventType.audit_logged,
-            org_id=principal.organization_id,
-            request_id=request.state.request_id,
-            trace_id=request.state.trace_id,
-            occurred_at=datetime.now(timezone.utc),
-            payload={"count": len(rows)},
-        )
-    )
+    event_bus.publish(build_event(EventType.audit_logged, principal.organization_id, getattr(request.state, "request_id", "unknown"), getattr(request.state, "trace_id", "unknown"), {"count": len(rows)}, principal.user_id))
     return rows
 
 
@@ -41,8 +28,5 @@ def export_audit_csv(request: Request, principal: Principal = Depends(parse_mock
 def export_audit_pdf(request: Request, principal: Principal = Depends(parse_mock_jwt)):
     enforce_org_scope(request, principal)
     rows = repository.list_logs(principal.organization_id)
-    lines = ["LEX AUREON COMPLIANCE AUDIT EXPORT", ""]
-    for row in rows:
-        lines.append(f"[{row.created_at.isoformat()}] {row.id} :: {row.prev_hash} -> {row.immutable_hash}")
-    fake_pdf_payload = "\n".join(lines).encode("utf-8")
-    return Response(content=fake_pdf_payload, media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=lex-aureon-audit.pdf"})
+    lines = ["LEX AUREON COMPLIANCE AUDIT EXPORT", ""] + [f"[{row.created_at.isoformat()}] {row.id} :: {row.previous_hash} -> {row.immutable_hash}" for row in rows]
+    return Response(content="\n".join(lines).encode("utf-8"), media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=lex-aureon-audit.pdf"})
