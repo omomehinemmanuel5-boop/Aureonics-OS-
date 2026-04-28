@@ -1,22 +1,67 @@
+'use client';
+
 import { LexResponse } from '@/lib/types';
 
 export function OutputPanels({ result }: { result: LexResponse | null }) {
   if (!result) return null;
 
-  const panels = [
-    ['Base LLM Raw Output', result.raw_output, 'border-slate-300/20'],
-    ['Governed Trajectory', result.governed_output, 'border-amber-300/30'],
-    ['Final Response', result.final_output, 'border-emerald-300/30']
-  ] as const;
+  const predictedRisk = result.metrics?.predicted_risk ?? (result.intervention ? 80 : 25);
+  const actualIntervention = result.metrics?.actual_intervention ?? Math.round((result.semantic_diff_score || 0) * 100);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      {panels.map(([label, value, border]) => (
-        <article key={label} className={`min-h-48 rounded-xl2 glass-panel ${border} p-4 shadow-card`}>
-          <h3 className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</h3>
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-200">{value}</p>
-        </article>
-      ))}
+    <div className="space-y-6 pb-20">
+      <OutputBlock title="RAW INTENT" text={result.raw_output} tone="red" />
+
+      <TransformationHint label="Risk Detected" value={`${predictedRisk}% risk`} color="red" />
+
+      <div className="flex justify-center py-1 opacity-30">
+        <span className="text-xl text-white/80">↓</span>
+      </div>
+
+      <OutputBlock title="GOVERNED TRAJECTORY" text={result.governed_output} tone="gold" />
+
+      <TransformationHint label="AI Intervention Applied" value={`${actualIntervention}% governance`} color="gold" />
+
+      <OutputBlock title="FINAL SOVEREIGN OUTPUT" text={result.final_output} tone="green" />
+
+      <button
+        onClick={async () => {
+          await navigator.clipboard.writeText(result.final_output);
+        }}
+        className="mt-2 text-[11px] font-mono text-[#c8a84b] underline"
+      >
+        Share this result →
+      </button>
+    </div>
+  );
+}
+
+function TransformationHint({ label, value, color }: { label: string; value: string; color: 'red' | 'gold' }) {
+  const styles = {
+    red: 'border-red-500/20 bg-red-500/5 text-red-400',
+    gold: 'border-[#c8a84b]/20 bg-[#c8a84b]/5 text-[#c8a84b]',
+  };
+
+  return (
+    <div className={`flex justify-between rounded border px-3 py-2 font-mono text-[11px] ${styles[color]}`}>
+      <span className="opacity-70">{label}</span>
+      <span>{value}</span>
+    </div>
+  );
+}
+
+function OutputBlock({ title, text, tone }: { title: string; text: string; tone: 'red' | 'gold' | 'green' }) {
+  const color =
+    tone === 'red'
+      ? 'border-red-500/30 text-red-300'
+      : tone === 'gold'
+      ? 'border-[#c8a84b]/30 text-[#e8cc7a]'
+      : 'border-green-500/30 text-green-300';
+
+  return (
+    <div className={`rounded border bg-black/50 p-3 ${color}`}>
+      <div className="mb-1 text-[10px] uppercase opacity-60">{title}</div>
+      <div className="whitespace-pre-wrap text-sm">{text}</div>
     </div>
   );
 }

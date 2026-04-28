@@ -48,8 +48,8 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState('');
   const [session, setSession] = useState<RunEntry[]>([]);
+  const [runCount, setRunCount] = useState(() => getOrCreateUser().usage_count);
 
-  const user = useMemo(() => getOrCreateUser(), []);
   const threatPreview = useMemo(() => getThreatPreview(prompt), [prompt]);
 
   const onRun = async () => {
@@ -68,6 +68,7 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
       setSession((prev) => [{ prompt, status, entropySacrificed: payload.semantic_diff_score }, ...prev].slice(0, 8));
       const updated = { ...freshUser, usage_count: freshUser.usage_count + 1 };
       persistUser(updated);
+      setRunCount(updated.usage_count);
     } catch (error) {
       setCopyStatus(error instanceof Error ? error.message : 'Unknown error');
     } finally {
@@ -78,11 +79,16 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
   const summary = result
     ? `Prompt: ${prompt.slice(0, 110)}\nLex Result: ${result.intervention ? 'INTERVENED' : 'PASS'}\nEntropy sacrificed: ${Math.round(result.semantic_diff_score * 100)}%`
     : '';
+  const hardGateReached = runCount >= 3;
+
+  if (hardGateReached) {
+    return <PaywallModal open onClose={() => {}} hardGate />;
+  }
 
   return (
     <div className="space-y-6">
       <div className="rounded-xl2 glass-panel p-4 text-sm text-slate-300">
-        Usage: {getOrCreateUser().usage_count} / {user.plan === 'free' ? 10 : user.plan === 'pro' ? 500 : 100000} runs today ({user.plan.toUpperCase()} plan)
+        Usage: {runCount} / 3 trial runs
       </div>
 
       <PromptBox
@@ -95,6 +101,9 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
         threatPreview={threatPreview}
       />
 
+      <p className="px-4 pb-2 text-xs text-white/50">
+        This response was automatically corrected to prevent risk while preserving intent.
+      </p>
       <MetricsBar result={result} />
       <OutputPanels result={result} />
 

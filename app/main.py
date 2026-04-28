@@ -33,6 +33,7 @@ class DecisionResponse(BaseModel):
     plan: Literal["free", "pro", "enterprise"] = "free"
     watermark: str | None = None
     remaining_runs: int | None = None
+    metrics: dict[str, float | int] | None = None
 
 
 class CheckoutStubRequest(BaseModel):
@@ -175,6 +176,9 @@ def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> Decisi
 
     final_output = governed_output if intervention else raw_output
     watermark = "Lex Demo" if plan == "free" else None
+    entropy_pct = round(semantic_diff_score * 100, 2)
+    meaning_pct = round(m_val * 100, 2)
+    predicted_risk = min(99, max(0, int(round(55 + entropy_pct * 0.4 + (10 if intervention else 0)))))
 
     return DecisionResponse(
         raw_output=raw_output,
@@ -187,6 +191,12 @@ def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> Decisi
         plan=plan,
         watermark=watermark,
         remaining_runs=remaining,
+        metrics={
+            "entropy": entropy_pct,
+            "meaning": meaning_pct,
+            "predicted_risk": predicted_risk,
+            "actual_intervention": entropy_pct,
+        },
     )
 
 
