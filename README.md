@@ -19,7 +19,8 @@ This creates a concrete “before/after” demo that buyers understand in minute
 - **Dashboard**: `/dashboard` (minimal SaaS runner)
 - **Core API endpoint**: `POST /lex/run`
 - **Operational endpoints**: `GET /health`, `GET /pricing`, `GET /demo`
-- **Stripe-ready stub**: `POST /billing/checkout`
+- **Auth endpoints**: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
+- **Stripe-ready stub**: `POST /billing/checkout` (auth required)
 
 ## Response Contract (`POST /lex/run`)
 
@@ -41,6 +42,19 @@ Frontend displays only:
 - `M` score
 
 `raw_output` and `governed_output` are available in **Developer mode** only.
+
+
+## Customer-Ready Authentication
+
+Lex API now includes first-party customer authentication for production pilots:
+
+- `POST /auth/register` creates a customer account and returns a signed bearer token.
+- `POST /auth/login` returns a new bearer token for existing users.
+- `GET /auth/me` validates the token and returns account profile + active plan context.
+- Paid plan execution (`x-subscription-plan: pro|enterprise`) requires a valid bearer token.
+- `POST /billing/checkout` requires authentication to prevent anonymous invoice generation.
+
+Use the returned token in `Authorization: Bearer <token>` for API and console runs.
 
 ## Pricing Model
 
@@ -65,6 +79,15 @@ Use `GET /pricing` for machine-readable plan metadata.
 
 Returns a manual invoice payload (invoice id, amount, due date, payment instructions, wire reference).
 This is intentionally optimized for immediate pilot sales without Stripe dependency.
+
+
+## Console UX Upgrades (Mobile + Keyboard Safe)
+
+The dashboard console now includes a **keyboard-aware sensory dock** so critical safety signal data stays visible while typing on mobile:
+
+- Sticky sensory rail on desktop + floating sensory dock on keyboard-open mobile states.
+- Real-time intervention/risk/meaning telemetry mirrored into the dock.
+- Inline auth controls in the console for immediate customer onboarding.
 
 ## Deployment (Render-safe)
 

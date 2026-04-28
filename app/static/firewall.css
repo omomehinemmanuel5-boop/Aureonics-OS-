@@ -337,3 +337,85 @@ textarea:focus { outline: none; border-color: #9cb2ff; box-shadow: 0 0 0 3px rgb
   .precalc-grid { grid-template-columns: 1fr; }
   .trust-strip { grid-template-columns: 1fr; }
 }
+
+
+.auth-shell {
+  align-items: stretch;
+}
+.auth-grid {
+  min-width: min(420px, 100%);
+  display: grid;
+  gap: 8px;
+}
+.auth-grid input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(149,176,255,0.24);
+  background: rgba(5, 10, 22, 0.65);
+  color: var(--text);
+  padding: 10px 12px;
+}
+.input-panel {
+  position: relative;
+}
+.sensory-rail {
+  position: sticky;
+  top: 12px;
+  align-self: start;
+}
+.sensory-dock {
+  position: fixed;
+  left: 10px;
+  right: 10px;
+  bottom: calc(10px + var(--keyboard-inset, 0px));
+  z-index: 90;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px;
+  background: rgba(8, 14, 28, 0.95);
+  box-shadow: var(--shadow);
+  display: none;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: center;
+}
+.dock-pill {
+  border: 1px solid rgba(149,176,255,0.24);
+  border-radius: 10px;
+  padding: 6px 8px;
+  background: rgba(13, 19, 37, 0.9);
+}
+.dock-pill span {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.dock-pill strong {
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+}
+body.keyboard-open .sensory-dock {
+  display: grid;
+}
+body.keyboard-open .sensory-rail {
+  opacity: .25;
+}
+@media (max-width: 1040px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .sensory-rail {
+    position: relative;
+    top: auto;
+  }
+}
+@media (max-width: 760px) {
+  .desktop-actions {
+    display: none;
+  }
+  textarea {
+    min-height: 180px;
+  }
+}

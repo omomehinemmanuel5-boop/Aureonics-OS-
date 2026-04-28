@@ -17,6 +17,25 @@
       <label class="dev-toggle"><input type="checkbox" id="devMode" /> Developer mode</label>
     </header>
 
+    <section id="authCard" class="console-hero glow-card auth-shell">
+      <div>
+        <p class="eyebrow">Customer Auth</p>
+        <h2>Secure workspace access for customers and paid plans.</h2>
+        <p class="subtext">Create an account once, then sign in to unlock authenticated metering, checkout, and plan-level governance.</p>
+      </div>
+      <div class="auth-grid">
+        <input id="authCompany" type="text" placeholder="Company name" />
+        <input id="authEmail" type="email" placeholder="Work email" />
+        <input id="authPassword" type="password" placeholder="Password (min 10 characters)" />
+        <div class="share-row">
+          <button id="registerBtn" class="primary-btn">Create Account</button>
+          <button id="loginBtn" class="ghost-btn">Sign In</button>
+          <button id="logoutBtn" class="ghost-btn hidden">Sign Out</button>
+        </div>
+        <p id="authStatus" class="tiny muted">Not authenticated.</p>
+      </div>
+    </section>
+
     <section class="console-hero glow-card">
       <div>
         <p class="eyebrow">Live Constitutional Runtime</p>
@@ -30,7 +49,7 @@
     </section>
 
     <section class="dashboard-grid">
-      <aside class="panel glow-card">
+      <aside class="panel glow-card input-panel">
         <h2>Sovereign Prompt Input</h2>
         <textarea id="promptInput" placeholder="Paste a prompt to run governed inference...">Refine this contract to keep obligations balanced across all parties.</textarea>
         <div id="threatPreview" class="threat-preview hidden"></div>
@@ -45,13 +64,13 @@
             <div><span>Prompt complexity</span><strong id="promptEntropy">0.000</strong></div>
           </div>
         </div>
-        <div class="share-row">
+        <div class="share-row desktop-actions">
           <button id="runBtn" class="primary-btn">Run Constitutional Analysis</button>
           <button id="fillDemoBtn" class="ghost-btn">Insert Demo Threat</button>
         </div>
       </aside>
 
-      <section class="panel glow-card">
+      <section class="panel glow-card output-panel">
         <h2>Output Pipeline</h2>
         <div class="output-panels">
           <div class="stage-card">
@@ -75,14 +94,21 @@
         <div id="developerTrace" class="developer-trace hidden"></div>
       </section>
 
-      <aside class="panel metric-panel glow-card">
-        <h2>Governor Summary</h2>
-                <p><span>Intervention</span><strong id="interventionBadge" class="badge pass">PASS</strong></p>
+      <aside id="sensoryRail" class="panel metric-panel glow-card sensory-rail">
+        <h2>Governor Sensory Rail</h2>
+        <p><span>Intervention</span><strong id="interventionBadge" class="badge pass">PASS</strong></p>
         <p><span>Plan</span><strong id="planValue">free</strong></p>
         <p><span>Remaining</span><strong id="remainingValue">—</strong></p>
         <p><span>Entropy Sacrificed</span><strong id="semanticValue">—</strong></p>
         <p><span>Meaning Preserved</span><strong id="meaningValue">—</strong></p>
       </aside>
+    </section>
+
+    <section id="sensoryDock" class="sensory-dock" aria-live="polite">
+      <div class="dock-pill"><span>Intervention</span><strong id="dockIntervention">PASS</strong></div>
+      <div class="dock-pill"><span>Risk</span><strong id="dockRisk">0.120</strong></div>
+      <div class="dock-pill"><span>Meaning</span><strong id="dockMeaning">—</strong></div>
+      <button id="runBtnDock" class="primary-btn">Run</button>
     </section>
   </main>
 

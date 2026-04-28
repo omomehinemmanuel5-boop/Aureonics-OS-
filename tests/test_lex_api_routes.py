@@ -40,7 +40,7 @@ def test_health_pricing_demo_and_checkout_stub():
     assert health_resp.status_code == 200
     assert pricing_resp.status_code == 200
     assert demo_resp.status_code == 200
-    assert checkout_resp.status_code == 200
+    assert checkout_resp.status_code == 401
 
     pricing = pricing_resp.json()
     assert pricing.get("product")
@@ -50,8 +50,4 @@ def test_health_pricing_demo_and_checkout_stub():
     assert demo["intervention"] is True
 
     checkout = checkout_resp.json()
-    assert checkout["checkout_mode"] == "manual_invoice"
-    assert checkout["amount_usd"] == 57
-    assert checkout["payment_terms_days"] == 14
-    assert checkout["wire_reference"].startswith("LEX-PRO-")
-    assert len(checkout["payment_instructions"]) >= 2
+    assert checkout["detail"] == "Authentication required"
