@@ -57,13 +57,19 @@ jobs:
 
       - name: Render binding validation
         run: |
-          echo "Verifying uvicorn startup contract..."
-          grep -Fq "uvicorn app.main:app" render.yaml || (
-            echo "ERROR: Missing correct Render start command"
-            echo "--- render.yaml ---"
-            cat render.yaml
-            exit 1
-          )
+          python - << 'PY'
+          from pathlib import Path
+          import re
+
+          content = Path("render.yaml").read_text(encoding="utf-8")
+          if not re.search(r"startCommand:\s*\|[\s\S]*app\.main:app", content):
+              print("ERROR: Render start command must include ASGI target 'app.main:app'")
+              print("--- render.yaml ---")
+              print(content)
+              raise SystemExit(1)
+
+          print("Render binding validation passed: found 'app.main:app' in startCommand")
+          PY
 
       - name: Typing Import Guard
         run: python scripts/check_typing_imports.py
