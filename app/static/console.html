@@ -21,11 +21,11 @@
       <div>
         <p class="eyebrow">Live Constitutional Runtime</p>
         <h2>Run prompts through a visible governor, not a black box.</h2>
-        <p class="subtext">Watch C/R/S metrics, projection logic, and intervention traces update as each request executes.</p>
+        <p class="subtext">Compare base LLM output against governed trajectory, with a clear intervention and entropy tradeoff summary.</p>
       </div>
       <div class="status-badges">
-        <span class="badge-pill">τ floor: 0.05</span>
-        <span class="badge-pill">ADV entropy: active</span>
+        <span class="badge-pill">Raw vs governed</span>
+        <span class="badge-pill">Intervention tradeoff</span>
       </div>
     </section>
 
@@ -41,17 +41,8 @@
           </div>
           <p id="precalcSummary" class="precalc-summary">Draft appears constitutionally safe so far.</p>
           <div class="precalc-grid">
-            <div><span>Predicted M(t)</span><strong id="predictedM">0.170</strong></div>
-            <div><span>Risk score</span><strong id="riskScore">0.120</strong></div>
-            <div><span>Prompt entropy</span><strong id="promptEntropy">0.000</strong></div>
-          </div>
-          <div class="mini-bars">
-            <label>C pre-estimate <span id="preCVal">0.330</span></label>
-            <div class="metric-track"><div id="preCBar" class="metric-fill c"></div></div>
-            <label>R pre-estimate <span id="preRVal">0.330</span></label>
-            <div class="metric-track"><div id="preRBar" class="metric-fill r"></div></div>
-            <label>S pre-estimate <span id="preSVal">0.340</span></label>
-            <div class="metric-track"><div id="preSBar" class="metric-fill s"></div></div>
+            <div><span>Intervention likelihood</span><strong id="riskScore">0.120</strong></div>
+            <div><span>Prompt complexity</span><strong id="promptEntropy">0.000</strong></div>
           </div>
         </div>
         <div class="share-row">
@@ -64,15 +55,15 @@
         <h2>Output Pipeline</h2>
         <div class="output-panels">
           <div class="stage-card">
-            <header><span class="stage-dot raw"></span>Raw Input</header>
+            <header><span class="stage-dot raw"></span>Base LLM Raw Output</header>
             <div id="rawOutput" class="output-box">No result yet.</div>
           </div>
           <div class="stage-card">
-            <header><span class="stage-dot governed"></span>Governor Analysis</header>
+            <header><span class="stage-dot governed"></span>Governed Trajectory</header>
             <div id="governedOutput" class="output-box">Awaiting run...</div>
           </div>
           <div class="stage-card">
-            <header><span class="stage-dot final"></span>Constitutional Response</header>
+            <header><span class="stage-dot final"></span>Final Response</header>
             <div id="finalOutput" class="output-box">Awaiting run...</div>
           </div>
         </div>
@@ -85,23 +76,12 @@
       </section>
 
       <aside class="panel metric-panel glow-card">
-        <h2>Governance Math</h2>
-        <p><span>Stability Margin M(t)</span><strong id="mValue">—</strong></p>
-        <p><span>Intervention</span><strong id="interventionBadge" class="badge pass">PASS</strong></p>
+        <h2>Governor Summary</h2>
+                <p><span>Intervention</span><strong id="interventionBadge" class="badge pass">PASS</strong></p>
         <p><span>Plan</span><strong id="planValue">free</strong></p>
         <p><span>Remaining</span><strong id="remainingValue">—</strong></p>
-        <p><span>Semantic Diff</span><strong id="semanticValue">—</strong></p>
-
-        <div class="metric-bars">
-          <label>C <span id="cVal">—</span></label>
-          <div class="metric-track"><div id="cBar" class="metric-fill c"></div></div>
-          <label>R <span id="rVal">—</span></label>
-          <div class="metric-track"><div id="rBar" class="metric-fill r"></div></div>
-          <label>S <span id="sVal">—</span></label>
-          <div class="metric-track"><div id="sBar" class="metric-fill s"></div></div>
-        </div>
-
-        <canvas id="simplexCanvas" width="280" height="180"></canvas>
+        <p><span>Entropy Sacrificed</span><strong id="semanticValue">—</strong></p>
+        <p><span>Meaning Preserved</span><strong id="meaningValue">—</strong></p>
       </aside>
     </section>
   </main>

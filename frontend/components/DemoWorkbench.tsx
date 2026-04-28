@@ -16,7 +16,7 @@ type DemoWorkbenchProps = {
 type RunEntry = {
   prompt: string;
   status: 'SAFE' | 'PROJECTED';
-  M: number;
+  entropySacrificed: number;
 };
 
 const chips = [
@@ -65,7 +65,7 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
       const payload = await runLex(prompt);
       setResult(payload);
       const status: RunEntry['status'] = payload.intervention ? 'PROJECTED' : 'SAFE';
-      setSession((prev) => [{ prompt, status, M: payload.M }, ...prev].slice(0, 8));
+      setSession((prev) => [{ prompt, status, entropySacrificed: payload.semantic_diff_score }, ...prev].slice(0, 8));
       const updated = { ...freshUser, usage_count: freshUser.usage_count + 1 };
       persistUser(updated);
     } catch (error) {
@@ -76,9 +76,7 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
   };
 
   const summary = result
-    ? `Prompt: ${prompt.slice(0, 110)}\nLex Result: ${result.intervention ? 'INTERVENED' : 'PASS'}\nOutput improved by ${Math.round(
-        result.semantic_diff_score * 100
-      )}%\nM=${result.M.toFixed(4)}`
+    ? `Prompt: ${prompt.slice(0, 110)}\nLex Result: ${result.intervention ? 'INTERVENED' : 'PASS'}\nEntropy sacrificed: ${Math.round(result.semantic_diff_score * 100)}%`
     : '';
 
   return (
@@ -107,7 +105,7 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
             <div className="mt-4 space-y-2 text-sm text-slate-200">
               <p><span className="text-slate-400">Gate:</span> {result.intervention ? 'Projection applied to restore constitutional bounds' : 'No projection required'}</p>
               <p><span className="text-slate-400">Reason:</span> {result.intervention_reason}</p>
-              <p><span className="text-slate-400">Formula:</span> M(t) = {result.M.toFixed(4)}; Δsemantic = {result.semantic_diff_score.toFixed(4)}</p>
+              <p><span className="text-slate-400">Tradeoff:</span> Governor preserved ~{Math.round((1 - result.semantic_diff_score) * 100)}% meaning and sacrificed ~{Math.round(result.semantic_diff_score * 100)}% semantic entropy.</p>
             </div>
           ) : (
             <p className="mt-4 text-sm text-slate-400">Run a prompt to view constitutional trace details.</p>
@@ -121,7 +119,7 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
               session.map((row, idx) => (
                 <div key={`${row.prompt}-${idx}`} className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 p-2 text-xs">
                   <p className="max-w-[70%] truncate text-slate-300">{row.prompt}</p>
-                  <p className={row.status === 'SAFE' ? 'text-emerald-300' : 'text-amber-300'}>{row.status} · M={row.M.toFixed(3)}</p>
+                  <p className={row.status === 'SAFE' ? 'text-emerald-300' : 'text-amber-300'}>{row.status} · entropy loss {Math.round(row.entropySacrificed * 100)}%</p>
                 </div>
               ))
             ) : (

@@ -6,11 +6,11 @@ const fillDemoBtn = byId('fillDemoBtn');
 const rawOutput = byId('rawOutput');
 const governedOutput = byId('governedOutput');
 const finalOutput = byId('finalOutput');
-const mValue = byId('mValue');
 const interventionBadge = byId('interventionBadge');
 const planValue = byId('planValue');
 const remainingValue = byId('remainingValue');
 const semanticValue = byId('semanticValue');
+const meaningValue = byId('meaningValue');
 const copyBtn = byId('copyBtn');
 const shareBtn = byId('shareBtn');
 const shareCard = byId('shareCard');
@@ -19,23 +19,8 @@ const devMode = byId('devMode');
 const threatPreview = byId('threatPreview');
 const riskBadge = byId('riskBadge');
 const precalcSummary = byId('precalcSummary');
-const predictedM = byId('predictedM');
 const riskScoreEl = byId('riskScore');
 const promptEntropyEl = byId('promptEntropy');
-const preCBar = byId('preCBar');
-const preRBar = byId('preRBar');
-const preSBar = byId('preSBar');
-const preCVal = byId('preCVal');
-const preRVal = byId('preRVal');
-const preSVal = byId('preSVal');
-
-const cBar = byId('cBar');
-const rBar = byId('rBar');
-const sBar = byId('sBar');
-const cVal = byId('cVal');
-const rVal = byId('rVal');
-const sVal = byId('sVal');
-const simplexCanvas = byId('simplexCanvas');
 
 let latest = null;
 const learnedRisk = {};
@@ -47,88 +32,25 @@ function setInterventionBadge(intervention) {
   interventionBadge.className = intervention ? 'badge intervened' : 'badge pass';
 }
 
-function clampPct(value) {
-  if (typeof value !== 'number' || Number.isNaN(value)) return 0;
-  return Math.max(0, Math.min(100, value * 100));
-}
-
-function drawSimplex(C = 0.33, R = 0.33, S = 0.34) {
-  if (!simplexCanvas) return;
-  const ctx = simplexCanvas.getContext('2d');
-  const w = simplexCanvas.width;
-  const h = simplexCanvas.height;
-  ctx.clearRect(0, 0, w, h);
-
-  const pad = 22;
-  const top = [w / 2, pad];
-  const left = [pad, h - pad * 1.2];
-  const right = [w - pad, h - pad * 1.2];
-
-  ctx.strokeStyle = 'rgba(156, 178, 255, 0.55)';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(top[0], top[1]);
-  ctx.lineTo(left[0], left[1]);
-  ctx.lineTo(right[0], right[1]);
-  ctx.closePath();
-  ctx.stroke();
-
-  ctx.fillStyle = 'rgba(95, 126, 255, 0.06)';
-  ctx.fill();
-
-  ctx.font = "11px 'DM Mono', monospace";
-  ctx.fillStyle = '#89b5ff';
-  ctx.fillText('C', top[0] - 4, top[1] - 6);
-  ctx.fillStyle = '#3be1c3';
-  ctx.fillText('R', left[0] - 12, left[1] + 12);
-  ctx.fillStyle = '#f9b851';
-  ctx.fillText('S', right[0] + 6, right[1] + 12);
-
-  const total = C + R + S || 1;
-  const nc = C / total;
-  const nr = R / total;
-  const ns = S / total;
-
-  const px = top[0] * nc + left[0] * nr + right[0] * ns;
-  const py = top[1] * nc + left[1] * nr + right[1] * ns;
-
-  const glow = ctx.createRadialGradient(px, py, 2, px, py, 16);
-  glow.addColorStop(0, 'rgba(236, 242, 255, 0.9)');
-  glow.addColorStop(1, 'rgba(106, 134, 255, 0)');
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(px, py, 16, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#eaf2ff';
-  ctx.strokeStyle = '#6a86ff';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(px, py, 5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-}
 
 function renderThreatHint(prompt) {
   if (!threatPreview) return;
   const p = prompt.toLowerCase();
-  let c = 0;
-  let r = 0;
-  let s = 0;
+  let riskSignals = [];
 
-  if (p.includes('forget') || p.includes('reset') || p.includes('ignore previous')) c -= 0.05;
-  if (p.includes('exploit') || p.includes('free') || p.includes('bypass')) r -= 0.05;
-  if (p.includes('must') || p.includes('fixed answer') || p.includes('deterministic')) s -= 0.06;
-  if (p.includes('balanced') || p.includes('fair') || p.includes('contract')) r += 0.03;
+  if (p.includes('forget') || p.includes('reset') || p.includes('ignore previous')) riskSignals.push('memory override language');
+  if (p.includes('exploit') || p.includes('free') || p.includes('bypass')) riskSignals.push('exploitative intent');
+  if (p.includes('must') || p.includes('fixed answer') || p.includes('deterministic')) riskSignals.push('rigid coercive framing');
+  if (p.includes('balanced') || p.includes('fair') || p.includes('contract')) riskSignals.push('cooperative intent');
 
-  if (c === 0 && r === 0 && s === 0) {
+  if (!riskSignals.length) {
     threatPreview.classList.add('hidden');
     threatPreview.textContent = '';
     return;
   }
 
   threatPreview.classList.remove('hidden');
-  threatPreview.textContent = `Threat preview  Δc ${c >= 0 ? '+' : ''}${c.toFixed(2)} · Δr ${r >= 0 ? '+' : ''}${r.toFixed(2)} · Δs ${s >= 0 ? '+' : ''}${s.toFixed(2)}`;
+  threatPreview.textContent = `Threat preview: ${riskSignals.join(' · ')}`;
 }
 
 function tokenize(prompt) {
@@ -149,23 +71,17 @@ function computeEntropy(prompt) {
 function updatePrecalc(prompt) {
   const tokens = tokenize(prompt);
   const entropy = computeEntropy(prompt);
-  let c = 0.33;
-  let r = 0.33;
-  let s = 0.34;
   let risk = 0.1;
 
   const heuristics = [
-    { test: /(forget|reset|ignore previous|override)/, delta: { c: -0.08, risk: 0.2 } },
-    { test: /(exploit|bypass|free|loophole|hack)/, delta: { r: -0.08, risk: 0.22 } },
-    { test: /(must|deterministic|fixed answer|always)/, delta: { s: -0.09, risk: 0.24 } },
-    { test: /(balanced|fair|contract|mutual|responsible)/, delta: { r: 0.05, risk: -0.08 } },
+    { test: /(forget|reset|ignore previous|override)/, delta: { risk: 0.2 } },
+    { test: /(exploit|bypass|free|loophole|hack)/, delta: { risk: 0.22 } },
+    { test: /(must|deterministic|fixed answer|always)/, delta: { risk: 0.24 } },
+    { test: /(balanced|fair|contract|mutual|responsible)/, delta: { risk: -0.08 } },
   ];
 
   for (const rule of heuristics) {
     if (rule.test.test(prompt.toLowerCase())) {
-      c += rule.delta.c || 0;
-      r += rule.delta.r || 0;
-      s += rule.delta.s || 0;
       risk += rule.delta.risk || 0;
     }
   }
@@ -173,37 +89,21 @@ function updatePrecalc(prompt) {
   for (const token of tokens) {
     const learned = learnedRisk[token] || 0;
     risk += learned;
-    if (learned > 0) {
-      s -= learned * 0.6;
-      r -= learned * 0.4;
-    }
   }
 
   risk += Math.min(entropy / 15, 0.25);
 
-  c = Math.max(0.01, Math.min(1, c));
-  r = Math.max(0.01, Math.min(1, r));
-  s = Math.max(0.01, Math.min(1, s));
-  const M = Math.min(c, r, s);
   risk = Math.max(0, Math.min(0.99, risk));
-
-  if (preCBar) preCBar.style.width = `${clampPct(c)}%`;
-  if (preRBar) preRBar.style.width = `${clampPct(r)}%`;
-  if (preSBar) preSBar.style.width = `${clampPct(s)}%`;
-  if (preCVal) preCVal.textContent = c.toFixed(3);
-  if (preRVal) preRVal.textContent = r.toFixed(3);
-  if (preSVal) preSVal.textContent = s.toFixed(3);
-  if (predictedM) predictedM.textContent = M.toFixed(3);
   if (riskScoreEl) riskScoreEl.textContent = risk.toFixed(3);
   if (promptEntropyEl) promptEntropyEl.textContent = entropy.toFixed(3);
 
   if (riskBadge) {
     riskBadge.className = 'risk-badge';
-    if (risk >= 0.55 || M < 0.08) {
+    if (risk >= 0.55) {
       riskBadge.classList.add('risk-high');
       riskBadge.textContent = 'HIGH RISK';
       if (precalcSummary) precalcSummary.textContent = 'Likely intervention. Consider clarifying intent to avoid coercive/extractive language.';
-    } else if (risk >= 0.3 || M < 0.14) {
+    } else if (risk >= 0.3) {
       riskBadge.classList.add('risk-med');
       riskBadge.textContent = 'ELEVATED';
       if (precalcSummary) precalcSummary.textContent = 'Moderate risk detected. Small edits could improve constitutional stability before submit.';
@@ -214,7 +114,7 @@ function updatePrecalc(prompt) {
     }
   }
 
-  return { tokens, risk, predictedState: { C: c, R: r, S: s }, M };
+  return { tokens, risk };
 }
 
 function learnFromRun(prompt, data) {
@@ -236,35 +136,22 @@ function render(data) {
   const prompt = promptInput?.value?.trim() || '—';
   learnFromRun(prompt, data);
 
-  if (rawOutput) rawOutput.textContent = prompt;
+  if (rawOutput) rawOutput.textContent = data.raw_output || prompt;
   if (governedOutput) {
     governedOutput.textContent = [
       `Intervention: ${data.intervention ? 'YES' : 'NO'}`,
       `Reason: ${data.intervention_reason || 'None'}`,
-      `Semantic diff: ${Number(data.semantic_diff_score ?? 0).toFixed(3)}`,
+      `Entropy sacrificed: ${Math.round(Number(data.semantic_diff_score ?? 0) * 100)}%`,
     ].join('\n');
   }
   if (finalOutput) finalOutput.textContent = data.final_output || 'No output returned.';
 
-  const m = Number(data.M || 0);
-  if (mValue) mValue.textContent = m.toFixed(3);
   setInterventionBadge(Boolean(data.intervention));
   if (planValue) planValue.textContent = data.plan || 'free';
   if (remainingValue) remainingValue.textContent = data.remaining_runs ?? '—';
-  if (semanticValue) semanticValue.textContent = Number(data.semantic_diff_score ?? 0).toFixed(3);
-
-  const C = Number(data?.state?.C ?? 0.33);
-  const R = Number(data?.state?.R ?? 0.33);
-  const S = Number(data?.state?.S ?? 0.34);
-
-  if (cBar) cBar.style.width = `${clampPct(C)}%`;
-  if (rBar) rBar.style.width = `${clampPct(R)}%`;
-  if (sBar) sBar.style.width = `${clampPct(S)}%`;
-  if (cVal) cVal.textContent = C.toFixed(3);
-  if (rVal) rVal.textContent = R.toFixed(3);
-  if (sVal) sVal.textContent = S.toFixed(3);
-
-  drawSimplex(C, R, S);
+  const entropySacrifice = Math.max(0, Math.min(1, Number(data.semantic_diff_score ?? 0)));
+  if (semanticValue) semanticValue.textContent = `${Math.round(entropySacrifice * 100)}%`;
+  if (meaningValue) meaningValue.textContent = `${Math.round((1 - entropySacrifice) * 100)}%`;
 
   if (devMode && devMode.checked && developerTrace) {
     developerTrace.classList.remove('hidden');
@@ -339,7 +226,7 @@ if (shareBtn && shareCard) {
   shareBtn.addEventListener('click', () => {
     if (!latest) return;
     shareCard.classList.remove('hidden');
-    shareCard.textContent = `Aureonics Result • ${latest.intervention ? 'INTERVENED' : 'PASS'} • M ${Number(latest.M || 0).toFixed(3)}\n${latest.final_output}`;
+    shareCard.textContent = `Aureonics Result • ${latest.intervention ? 'INTERVENED' : 'PASS'} • entropy sacrificed ${Math.round(Number(latest.semantic_diff_score || 0) * 100)}%\n${latest.final_output}`;
   });
 }
 if (devMode) {
@@ -348,4 +235,3 @@ if (devMode) {
   });
 }
 
-drawSimplex();
