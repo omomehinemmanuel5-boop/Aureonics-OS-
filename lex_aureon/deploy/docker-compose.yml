@@ -1,0 +1,42 @@
+version: "3.9"
+services:
+  api-gateway:
+    build:
+      context: ../..
+      dockerfile: lex_aureon/backend/api_gateway/Dockerfile
+    environment:
+      LEX_ENV: local
+      SUPABASE_URL: http://supabase:54321
+      SUPABASE_ANON_KEY: dev-key
+      STRIPE_WEBHOOK_SECRET: dev-secret
+    ports: ["8000:8000"]
+
+  ingestion-service:
+    build:
+      context: ../..
+      dockerfile: lex_aureon/backend/ingestion_service/Dockerfile
+    ports: ["8001:8000"]
+
+  governance-engine:
+    build:
+      context: ../..
+      dockerfile: lex_aureon/backend/governance_engine/Dockerfile
+    ports: ["8002:8000"]
+
+  policy-engine:
+    build:
+      context: ../..
+      dockerfile: lex_aureon/backend/policy_engine/Dockerfile
+    ports: ["8003:8000"]
+
+  audit-log-service:
+    build:
+      context: ../..
+      dockerfile: lex_aureon/backend/audit_log_service/Dockerfile
+    ports: ["8004:8000"]
+
+  metrics-service:
+    build:
+      context: ../..
+      dockerfile: lex_aureon/backend/metrics_service/Dockerfile
+    ports: ["8005:8000"]

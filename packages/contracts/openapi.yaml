@@ -1,0 +1,38 @@
+openapi: 3.1.0
+info:
+  title: Lex Aureon Contracts
+  version: 1.1.0
+paths:
+  /ingest:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestRequest'
+  /govern:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GovernanceRequest'
+components:
+  schemas:
+    IngestRequest:
+      type: object
+      required: [organization_id, user_id, model_name, raw_output]
+      properties:
+        organization_id: { type: string }
+        user_id: { type: string }
+        model_name: { type: string }
+        prompt: { type: string }
+        raw_output: { type: string }
+    GovernanceRequest:
+      type: object
+      required: [log_id, organization_id]
+      properties:
+        log_id: { type: string }
+        organization_id: { type: string }
