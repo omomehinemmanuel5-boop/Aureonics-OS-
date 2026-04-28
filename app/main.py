@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from typing import Literal
 
@@ -38,11 +38,23 @@ class DecisionResponse(BaseModel):
 
 class CheckoutStubRequest(BaseModel):
     plan: Literal["pro", "enterprise"]
+    method: Literal["manual"] = "manual"
+    buyer_email: str = Field(min_length=5, max_length=320)
+    company_name: str = Field(min_length=2, max_length=160)
+    seats: int = Field(default=1, ge=1, le=1000)
+    notes: str | None = Field(default=None, max_length=1000)
 
 
 class CheckoutStubResponse(BaseModel):
-    checkout_url: str
-    session_id: str
+    checkout_mode: Literal["manual_invoice"]
+    invoice_id: str
+    amount_usd: int | None = None
+    currency: Literal["USD"] = "USD"
+    payment_terms_days: int
+    due_date: str
+    wire_reference: str
+    next_action: str
+    payment_instructions: list[str]
     note: str
 
 
@@ -200,6 +212,12 @@ def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> Decisi
     )
 
 
+def _plan_price_usd(plan: str) -> int | None:
+    if plan == "pro":
+        return 19
+    return None
+
+
 def _get_kernel() -> object:
     """Compatibility accessor used by legacy tests and runtime callers."""
     _ensure_state(app)
@@ -268,6 +286,7 @@ def create_app() -> FastAPI:
     def pricing():
         return {
             "product": "Lex API — Governed AI Responses",
+            "checkout_mode": "manual_invoice",
             "plans": [
                 {
                     "name": "free",
@@ -275,6 +294,7 @@ def create_app() -> FastAPI:
                     "limits": "10 runs/day",
                     "watermark": "Lex Demo",
                     "features": ["Governed inference", "Dashboard access"],
+                    "manual_checkout": False,
                 },
                 {
                     "name": "pro",
@@ -282,6 +302,7 @@ def create_app() -> FastAPI:
                     "limits": "2,000 runs/month",
                     "watermark": None,
                     "features": ["No watermark", "Priority inference"],
+                    "manual_checkout": True,
                 },
                 {
                     "name": "enterprise",
@@ -289,6 +310,7 @@ def create_app() -> FastAPI:
                     "limits": "Custom / bulk",
                     "watermark": None,
                     "features": ["API access", "Bulk inference", "Governance tuning controls"],
+                    "manual_checkout": True,
                 },
             ],
         }
@@ -308,11 +330,30 @@ def create_app() -> FastAPI:
 
     @app.post("/billing/checkout", response_model=CheckoutStubResponse)
     def billing_checkout(payload: CheckoutStubRequest):
-        now_token = int(_now().timestamp())
+        now_dt = _now()
+        now_token = int(now_dt.timestamp())
+        reference = f"LEX-{payload.plan.upper()}-{now_token}"
+        price = _plan_price_usd(payload.plan)
+        amount = None if price is None else payload.seats * price
+        due_date = (now_dt + timedelta(days=14)).date().isoformat()
+        if payload.plan == "pro":
+            next_action = "Reply to the invoice email and pay via ACH/wire using the reference code."
+        else:
+            next_action = "Book enterprise scoping call; invoice is issued after scope confirmation."
         return CheckoutStubResponse(
-            checkout_url=f"https://checkout.stripe.com/pay/lex_stub_{payload.plan}_{now_token}",
-            session_id=f"cs_test_lex_{payload.plan}_{now_token}",
-            note="Stripe placeholder endpoint. Replace with real Checkout Session creation.",
+            checkout_mode="manual_invoice",
+            invoice_id=f"inv_manual_{payload.plan}_{now_token}",
+            amount_usd=amount,
+            payment_terms_days=14,
+            due_date=due_date,
+            wire_reference=reference,
+            next_action=next_action,
+            payment_instructions=[
+                f"Send remittance to billing@aureonics.ai with invoice_id and wire reference {reference}.",
+                "Payment rails: ACH transfer, domestic wire, or approved procurement portal.",
+                "After payment confirmation, production plan entitlement is activated within one business day.",
+            ],
+            note="Manual payment mode is active. Stripe auto-checkout is intentionally disabled.",
         )
 
     return app

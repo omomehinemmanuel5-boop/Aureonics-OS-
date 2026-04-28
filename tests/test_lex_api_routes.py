@@ -27,7 +27,15 @@ def test_health_pricing_demo_and_checkout_stub():
     health_resp = client.get("/health")
     pricing_resp = client.get("/pricing")
     demo_resp = client.get("/demo")
-    checkout_resp = client.post("/billing/checkout", json={"plan": "pro"})
+    checkout_resp = client.post(
+        "/billing/checkout",
+        json={
+            "plan": "pro",
+            "buyer_email": "buyer@example.com",
+            "company_name": "Acme Corp",
+            "seats": 3,
+        },
+    )
 
     assert health_resp.status_code == 200
     assert pricing_resp.status_code == 200
@@ -42,5 +50,8 @@ def test_health_pricing_demo_and_checkout_stub():
     assert demo["intervention"] is True
 
     checkout = checkout_resp.json()
-    assert "checkout_url" in checkout
-    assert "session_id" in checkout
+    assert checkout["checkout_mode"] == "manual_invoice"
+    assert checkout["amount_usd"] == 57
+    assert checkout["payment_terms_days"] == 14
+    assert checkout["wire_reference"].startswith("LEX-PRO-")
+    assert len(checkout["payment_instructions"]) >= 2

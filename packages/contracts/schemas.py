@@ -62,3 +62,8 @@ class AuditEvent(BaseModel):
     trace_id: str
     payload: dict[str, Any] = Field(default_factory=dict)
     occurred_at: datetime
+
+
+# Backward-compatibility aliases expected by downstream tests/services.
+IngestRequest = IngestRequestContract
+GovernanceRequest = GovernanceRequestContract

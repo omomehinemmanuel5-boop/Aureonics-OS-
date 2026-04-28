@@ -50,15 +50,21 @@ Frontend displays only:
 
 Use `GET /pricing` for machine-readable plan metadata.
 
-## Stripe Placeholder Layer
+## Billing Layer (Manual Payment Mode)
 
 `POST /billing/checkout`
 
 ```json
-{ "plan": "pro" }
+{
+  "plan": "pro",
+  "buyer_email": "buyer@example.com",
+  "company_name": "Acme Corp",
+  "seats": 3
+}
 ```
 
-Returns a stub checkout URL/session id to replace with real Stripe Checkout Session creation.
+Returns a manual invoice payload (invoice id, amount, due date, payment instructions, wire reference).
+This is intentionally optimized for immediate pilot sales without Stripe dependency.
 
 ## Deployment (Render-safe)
 
