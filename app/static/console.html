@@ -29,6 +29,24 @@
       </div>
     </section>
 
+    <section class="auth-panel panel glow-card">
+      <div class="auth-head">
+        <h2>Customer Authentication</h2>
+        <p id="authStateText" class="muted">Sign in to persist your customer identity and plan limits.</p>
+      </div>
+      <div class="auth-grid">
+        <input id="authName" type="text" placeholder="Full name" autocomplete="name" />
+        <input id="authCompany" type="text" placeholder="Company" autocomplete="organization" />
+        <input id="authEmail" type="email" placeholder="Work email" autocomplete="email" />
+        <input id="authPassword" type="password" placeholder="Password (10+ chars)" autocomplete="current-password" />
+      </div>
+      <div class="share-row">
+        <button id="registerBtn" class="primary-btn">Create Account</button>
+        <button id="loginBtn" class="ghost-btn">Sign In</button>
+        <button id="logoutBtn" class="ghost-btn">Sign Out</button>
+      </div>
+    </section>
+
     <section class="dashboard-grid">
       <aside class="panel glow-card">
         <h2>Sovereign Prompt Input</h2>
@@ -43,6 +61,7 @@
           <div class="precalc-grid">
             <div><span>Intervention likelihood</span><strong id="riskScore">0.120</strong></div>
             <div><span>Prompt complexity</span><strong id="promptEntropy">0.000</strong></div>
+            <div><span>Important Sensory</span><strong id="importantSensory">Stable</strong></div>
           </div>
         </div>
         <div class="share-row">
@@ -75,16 +94,22 @@
         <div id="developerTrace" class="developer-trace hidden"></div>
       </section>
 
-      <aside class="panel metric-panel glow-card">
+      <aside class="panel metric-panel glow-card" id="sensoryPanel">
         <h2>Governor Summary</h2>
-                <p><span>Intervention</span><strong id="interventionBadge" class="badge pass">PASS</strong></p>
+        <p><span>Intervention</span><strong id="interventionBadge" class="badge pass">PASS</strong></p>
         <p><span>Plan</span><strong id="planValue">free</strong></p>
         <p><span>Remaining</span><strong id="remainingValue">—</strong></p>
-        <p><span>Entropy Sacrificed</span><strong id="semanticValue">—</strong></p>
-        <p><span>Meaning Preserved</span><strong id="meaningValue">—</strong></p>
+        <p><span>Sensory</span><strong id="semanticValue">—</strong></p>
+        <p><span>Important Sensory</span><strong id="meaningValue">—</strong></p>
       </aside>
     </section>
   </main>
+
+  <div id="mobileSensoryDock" class="mobile-sensory-dock">
+    <div><span>Intervention</span><strong id="dockIntervention">PASS</strong></div>
+    <div><span>Sensory</span><strong id="dockSensory">—</strong></div>
+    <div><span>Important</span><strong id="dockImportant">—</strong></div>
+  </div>
 
   <script src="/static/firewall.js" defer></script>
 </body>

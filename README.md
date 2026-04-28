@@ -138,3 +138,15 @@ cd frontend
 npm install
 npm run dev
 ```
+
+## Authentication (Customer-Ready Console)
+
+The dashboard now supports first-party account auth:
+
+- `POST /auth/register` creates an account and returns a signed bearer token.
+- `POST /auth/login` authenticates an existing account.
+- `GET /auth/me` validates current bearer token and returns customer profile + plan.
+
+`/dashboard` stores the bearer token in local storage and automatically attaches it to `POST /lex/run`, so quotas are enforced by account identity (instead of only IP identity) when authenticated.
+
+> Production note: set `AUTH_SECRET_KEY` in environment to a unique high-entropy secret before deployment.

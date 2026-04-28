@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import os
+import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
-from typing import Literal
+from typing import Any, Literal
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -58,8 +63,35 @@ class CheckoutStubResponse(BaseModel):
     note: str
 
 
+class RegisterRequest(BaseModel):
+    email: str
+    password: str = Field(min_length=10, max_length=128)
+    full_name: str = Field(min_length=2, max_length=120)
+    company_name: str | None = Field(default=None, max_length=160)
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str = Field(min_length=10, max_length=128)
+
+
+class AuthResponse(BaseModel):
+    token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_at: str
+    user: dict[str, Any]
+
+
+class UserProfileResponse(BaseModel):
+    authenticated: bool
+    user: dict[str, Any] | None = None
+
+
 FREE_DAILY_LIMIT = 10
 PRO_MONTHLY_LIMIT = 2000
+TOKEN_TTL_HOURS = 12
+PBKDF2_ITERATIONS = 240_000
+
 _KERNEL_SINGLETON: SovereignKernel | None = None
 
 
@@ -70,26 +102,139 @@ def _ensure_state(app: FastAPI) -> None:
         app.state.startup_errors = []
     if not hasattr(app.state, "usage_counts"):
         app.state.usage_counts = {}
+    if not hasattr(app.state, "users"):
+        app.state.users = {}
 
 
-def _get_kernel() -> SovereignKernel:
+def _get_kernel_singleton() -> SovereignKernel:
     global _KERNEL_SINGLETON
     if _KERNEL_SINGLETON is None:
         _KERNEL_SINGLETON = SovereignKernel()
     return _KERNEL_SINGLETON
 
 
+def _get_kernel() -> object:
+    """Compatibility accessor used by legacy tests and runtime callers."""
+    _ensure_state(app)
+    kernel = app.state.kernel
+    if kernel is not None and hasattr(kernel, "call_llm") and hasattr(kernel, "state"):
+        return kernel
+
+    kernel_result = load_kernel_safely()
+    kernel = kernel_result.get("kernel")
+    app.state.kernel = kernel
+    if kernel_result.get("error"):
+        app.state.startup_errors.append(str(kernel_result["error"]))
+    return kernel
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _request_identity(request: Request) -> str:
+def _auth_secret() -> str:
+    return os.getenv("AUTH_SECRET_KEY", "dev-not-for-production-change-me")
+
+
+def _hash_password(password: str, salt: str | None = None) -> str:
+    current_salt = salt or secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        current_salt.encode("utf-8"),
+        PBKDF2_ITERATIONS,
+    ).hex()
+    return f"{current_salt}${digest}"
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    try:
+        salt, digest = stored.split("$", 1)
+    except ValueError:
+        return False
+    candidate = _hash_password(password, salt).split("$", 1)[1]
+    return hmac.compare_digest(digest, candidate)
+
+
+def _b64url_encode(payload: bytes) -> str:
+    return base64.urlsafe_b64encode(payload).rstrip(b"=").decode("utf-8")
+
+
+def _b64url_decode(payload: str) -> bytes:
+    padding = "=" * ((4 - len(payload) % 4) % 4)
+    return base64.urlsafe_b64decode((payload + padding).encode("utf-8"))
+
+
+def _sign_token_payload(payload: str) -> str:
+    signature = hmac.new(_auth_secret().encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).digest()
+    return _b64url_encode(signature)
+
+
+def _create_access_token(user: dict[str, Any]) -> tuple[str, datetime]:
+    expiry = _now() + timedelta(hours=TOKEN_TTL_HOURS)
+    compact_payload = "|".join(
+        [
+            str(user["id"]),
+            str(user["email"]),
+            str(user["plan"]),
+            str(int(expiry.timestamp())),
+        ]
+    )
+    payload = _b64url_encode(compact_payload.encode("utf-8"))
+    signature = _sign_token_payload(payload)
+    return f"v1.{payload}.{signature}", expiry
+
+
+def _parse_access_token(token: str) -> dict[str, Any] | None:
+    if not token or not token.startswith("v1."):
+        return None
+    try:
+        _, payload, signature = token.split(".", 2)
+    except ValueError:
+        return None
+    expected = _sign_token_payload(payload)
+    if not hmac.compare_digest(signature, expected):
+        return None
+
+    try:
+        decoded = _b64url_decode(payload).decode("utf-8")
+        user_id, email, plan, exp_token = decoded.split("|", 3)
+        expiry = datetime.fromtimestamp(int(exp_token), tz=timezone.utc)
+    except Exception:
+        return None
+
+    if expiry <= _now():
+        return None
+    if plan not in {"free", "pro", "enterprise"}:
+        return None
+
+    return {"id": user_id, "email": email, "plan": plan, "expires_at": expiry.isoformat()}
+
+
+def _token_from_header(authorization: str | None = None) -> str | None:
+    if not authorization:
+        return None
+    if not authorization.lower().startswith("bearer "):
+        return None
+    return authorization.split(" ", 1)[1].strip()
+
+
+def _request_identity(request: Request, principal: dict[str, Any] | None) -> str:
+    if principal:
+        return f"user:{principal['id']}"
     forwarded = request.headers.get("x-forwarded-for", "").strip()
     if forwarded:
         return forwarded.split(",")[0].strip()
     if request.client and request.client.host:
         return request.client.host
     return "anonymous"
+
+
+def _get_plan(request: Request, principal: dict[str, Any] | None) -> Literal["free", "pro", "enterprise"]:
+    if principal and principal.get("plan") in {"free", "pro", "enterprise"}:
+        return principal["plan"]
+    header_value = request.headers.get("x-subscription-plan", "free").strip().lower()
+    return header_value if header_value in {"free", "pro", "enterprise"} else "free"
 
 
 def _semantic_diff_score(a: str, b: str) -> float:
@@ -116,11 +261,6 @@ def _generate_raw_output(prompt: str, kernel: object | None) -> str:
     return f"Model response: {prompt.strip()}"
 
 
-def _get_plan(request: Request) -> Literal["free", "pro", "enterprise"]:
-    header_value = request.headers.get("x-subscription-plan", "free").strip().lower()
-    return header_value if header_value in {"free", "pro", "enterprise"} else "free"
-
-
 def _limit_key(identity: str, plan: str) -> str:
     now = _now()
     if plan == "free":
@@ -144,12 +284,25 @@ def _consume_quota(app: FastAPI, identity: str, plan: str) -> tuple[bool, int | 
     return True, limit - app.state.usage_counts[key]
 
 
+def _user_response_shape(user: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": user["id"],
+        "email": user["email"],
+        "full_name": user["full_name"],
+        "company_name": user.get("company_name"),
+        "plan": user.get("plan", "free"),
+        "created_at": user["created_at"],
+    }
+
+
 def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> DecisionResponse:
     _ensure_state(app)
     if app.state.kernel is None:
         app.state.kernel = _get_kernel()
-    identity = _request_identity(request)
-    plan = _get_plan(request)
+
+    principal = _parse_access_token(_token_from_header(request.headers.get("authorization")))
+    identity = _request_identity(request, principal)
+    plan = _get_plan(request, principal)
     allowed, remaining = _consume_quota(app, identity, plan)
 
     if not allowed:
@@ -218,26 +371,13 @@ def _plan_price_usd(plan: str) -> int | None:
     return None
 
 
-def _get_kernel() -> object:
-    """Compatibility accessor used by legacy tests and runtime callers."""
-    _ensure_state(app)
-    kernel = app.state.kernel
-    if kernel is not None and hasattr(kernel, "call_llm") and hasattr(kernel, "state"):
-        return kernel
-
-    kernel_result = load_kernel_safely()
-    kernel = kernel_result.get("kernel")
-    app.state.kernel = kernel
-    if kernel_result.get("error"):
-        app.state.startup_errors.append(str(kernel_result["error"]))
-    return kernel
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.kernel = _get_kernel()
+    _ensure_state(app)
+    app.state.kernel = _get_kernel_singleton()
     app.state.startup_errors = []
     app.state.usage_counts = {}
+    app.state.users = {}
 
     kernel_result = load_kernel_safely()
     app.state.kernel = kernel_result.get("kernel") or app.state.kernel
@@ -247,7 +387,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Lex API — Governed AI Responses", version="2.0.0", lifespan=lifespan)
+    app = FastAPI(title="Lex API — Governed AI Responses", version="2.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -259,7 +399,8 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def subscription_status_middleware(request: Request, call_next):
         _ensure_state(app)
-        request.state.subscription_plan = _get_plan(request)
+        principal = _parse_access_token(_token_from_header(request.headers.get("authorization")))
+        request.state.subscription_plan = _get_plan(request, principal)
         response = await call_next(request)
         response.headers["x-subscription-plan"] = request.state.subscription_plan
         return response
@@ -280,7 +421,54 @@ def create_app() -> FastAPI:
             "degraded": len(app.state.startup_errors) > 0,
             "kernel_ready": bool(app.state.kernel is not None),
             "errors": app.state.startup_errors,
+            "registered_users": len(app.state.users),
         }
+
+    @app.post("/auth/register", response_model=AuthResponse)
+    def register(payload: RegisterRequest):
+        _ensure_state(app)
+        email = payload.email.strip().lower()
+        if "@" not in email or "." not in email.split("@")[-1]:
+            raise HTTPException(status_code=422, detail="Invalid email")
+        if email in app.state.users:
+            raise HTTPException(status_code=409, detail="User already exists")
+
+        user = {
+            "id": f"usr_{secrets.token_hex(8)}",
+            "email": email,
+            "full_name": payload.full_name.strip(),
+            "company_name": payload.company_name.strip() if payload.company_name else None,
+            "plan": "free",
+            "created_at": _now().isoformat(),
+            "password_hash": _hash_password(payload.password),
+        }
+        app.state.users[email] = user
+        token, expires_at = _create_access_token(user)
+        return AuthResponse(token=token, expires_at=expires_at.isoformat(), user=_user_response_shape(user))
+
+    @app.post("/auth/login", response_model=AuthResponse)
+    def login(payload: LoginRequest):
+        _ensure_state(app)
+        email = payload.email.strip().lower()
+        if "@" not in email or "." not in email.split("@")[-1]:
+            raise HTTPException(status_code=422, detail="Invalid email")
+        user = app.state.users.get(email)
+        if not user or not _verify_password(payload.password, user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+
+        token, expires_at = _create_access_token(user)
+        return AuthResponse(token=token, expires_at=expires_at.isoformat(), user=_user_response_shape(user))
+
+    @app.get("/auth/me", response_model=UserProfileResponse)
+    def auth_me(authorization: str | None = Header(default=None)):
+        _ensure_state(app)
+        principal = _parse_access_token(_token_from_header(authorization))
+        if not principal:
+            return UserProfileResponse(authenticated=False)
+        user = app.state.users.get(principal["email"])
+        if not user:
+            return UserProfileResponse(authenticated=False)
+        return UserProfileResponse(authenticated=True, user=_user_response_shape(user))
 
     @app.get("/pricing")
     def pricing():
