@@ -1,0 +1,79 @@
+name: Lex Aureon CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Python tests
+        run: pytest -q
+
+  contract-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate shared contracts
+        run: |
+          python -m compileall packages/contracts
+          test -f packages/contracts/openapi.yaml
+          rg "openapi: 3.1.0" packages/contracts/openapi.yaml
+
+  schema-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate RLS and schema primitives
+        run: |
+          rg "enable row level security" supabase/migrations/20260428_lex_aureon_enterprise_schema.sql
+          rg "create policy .*_isolation" supabase/migrations/20260428_lex_aureon_enterprise_schema.sql
+
+  security-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Security lint (semgrep)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/security-audit
+
+  frontend-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Tests
+        run: npm run test
+
+  stripe-config-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Stripe env references
+        run: |
+          rg "STRIPE_WEBHOOK_SECRET|billing/stripe/webhook" lex_aureon/backend/api_gateway/main.py

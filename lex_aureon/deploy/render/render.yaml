@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: lex-aureon-api-gateway
+    runtime: docker
+    dockerfilePath: lex_aureon/backend/api_gateway/Dockerfile
+    rootDir: .
+    healthCheckPath: /docs
+    autoDeploy: true
+  - type: web
+    name: lex-aureon-ingestion
+    runtime: docker
+    dockerfilePath: lex_aureon/backend/ingestion_service/Dockerfile
+    rootDir: .
+    healthCheckPath: /docs
+  - type: web
+    name: lex-aureon-governance
+    runtime: docker
+    dockerfilePath: lex_aureon/backend/governance_engine/Dockerfile
+    rootDir: .
+    healthCheckPath: /docs
+  - type: web
+    name: lex-aureon-policy
+    runtime: docker
+    dockerfilePath: lex_aureon/backend/policy_engine/Dockerfile
+    rootDir: .
+    healthCheckPath: /docs
+  - type: web
+    name: lex-aureon-audit
+    runtime: docker
+    dockerfilePath: lex_aureon/backend/audit_log_service/Dockerfile
+    rootDir: .
+    healthCheckPath: /docs
+  - type: web
+    name: lex-aureon-metrics
+    runtime: docker
+    dockerfilePath: lex_aureon/backend/metrics_service/Dockerfile
+    rootDir: .
+    healthCheckPath: /docs
