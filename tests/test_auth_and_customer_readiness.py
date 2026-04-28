@@ -38,49 +38,17 @@ def test_auth_register_login_and_me_contract():
     assert login.json()["access_token"]
 
 
-def test_paid_plan_requires_authentication_and_checkout_is_protected():
+def test_paid_plan_and_checkout_work_without_authentication():
     paid_without_auth = client.post(
         "/lex/run",
         headers={"x-subscription-plan": "pro"},
         json={"prompt": "Explain policy drift.", "firewall_mode": True},
     )
-    assert paid_without_auth.status_code == 401
-
-    register = client.post(
-        "/auth/register",
-        json={
-            "email": "buyer@example.com",
-            "password": "AnotherStrongPass!",
-            "company_name": "Buyer Co",
-        },
-    )
-    token = register.json()["access_token"]
-
-    paid_with_auth = client.post(
-        "/lex/run",
-        headers={
-            "x-subscription-plan": "pro",
-            "Authorization": f"Bearer {token}",
-        },
-        json={"prompt": "Explain policy drift.", "firewall_mode": True},
-    )
-    assert paid_with_auth.status_code == 200
-    assert paid_with_auth.json()["plan"] == "pro"
-
-    checkout_requires_auth = client.post(
-        "/billing/checkout",
-        json={
-            "plan": "pro",
-            "buyer_email": "buyer@example.com",
-            "company_name": "Buyer Co",
-            "seats": 3,
-        },
-    )
-    assert checkout_requires_auth.status_code == 401
+    assert paid_without_auth.status_code == 200
+    assert paid_without_auth.json()["plan"] == "pro"
 
     checkout = client.post(
         "/billing/checkout",
-        headers={"Authorization": f"Bearer {token}"},
         json={
             "plan": "pro",
             "buyer_email": "buyer@example.com",

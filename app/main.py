@@ -371,9 +371,6 @@ def create_app() -> FastAPI:
                 }
 
         request.state.subscription_plan = _get_plan(request)
-        if request.state.subscription_plan in {"pro", "enterprise"} and request.state.auth_user is None:
-            return JSONResponse(status_code=401, content={"detail": "Authenticated account required for paid plans"})
-
         response = await call_next(request)
         response.headers["x-subscription-plan"] = request.state.subscription_plan
         if request.state.auth_user:
@@ -494,7 +491,6 @@ def create_app() -> FastAPI:
 
     @app.post("/billing/checkout", response_model=CheckoutStubResponse)
     def billing_checkout(payload: CheckoutStubRequest, request: Request):
-        _require_auth(request)
         now_dt = _now()
         now_token = int(now_dt.timestamp())
         reference = f"LEX-{payload.plan.upper()}-{now_token}"

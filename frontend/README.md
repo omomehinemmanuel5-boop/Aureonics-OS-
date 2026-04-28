@@ -9,7 +9,7 @@
 ## Routes
 - `/` Landing page (conversion-focused)
 - `/demo` Demo funnel with share-card loop
-- `/app` Product dashboard with usage gating
+- `/app` Product dashboard with no login/trial gate
 - `/pricing` Pricing + checkout
 - `/api/checkout` Stripe subscription checkout session creator
 
@@ -30,3 +30,7 @@ npm run dev
 - `STRIPE_SECRET_KEY`
 - `STRIPE_PRICE_ID_PRO`
 - `STRIPE_PRICE_ID_ENTERPRISE`
+
+## Troubleshooting
+- If the **FINAL SOVEREIGN OUTPUT** panel appears blank, the UI now auto-falls back to `governed_output` and then `raw_output`.
+- If runs are not executing, verify backend is reachable at `NEXT_PUBLIC_LEX_API_BASE_URL` and that `POST /lex/run` returns JSON.
