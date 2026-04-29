@@ -1,0 +1,8 @@
+version: '3.8'
+services:
+  growth-engine:
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: bash -lc "pip install -r requirements.txt && python -m services.growth.engine"
