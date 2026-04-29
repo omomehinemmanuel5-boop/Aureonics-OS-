@@ -3,11 +3,9 @@
 import { useMemo, useState } from 'react';
 import { runLex } from '@/lib/api';
 import { LexResponse } from '@/lib/types';
-import { canRun, getOrCreateUser, persistUser } from '@/lib/usage';
 import { PromptBox } from './PromptBox';
 import { OutputPanels } from './OutputPanels';
 import { MetricsBar } from './MetricsBar';
-import { PaywallModal } from './PaywallModal';
 
 type DemoWorkbenchProps = {
   mode: 'demo' | 'app';
@@ -45,20 +43,12 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
   const [prompt, setPrompt] = useState('Refine the business contract to ensure balanced obligations for all parties.');
   const [result, setResult] = useState<LexResponse | null>(null);
   const [isRunning, setIsRunning] = useState(false);
-  const [paywallOpen, setPaywallOpen] = useState(false);
   const [copyStatus, setCopyStatus] = useState('');
   const [session, setSession] = useState<RunEntry[]>([]);
-  const [runCount, setRunCount] = useState(() => getOrCreateUser().usage_count);
 
   const threatPreview = useMemo(() => getThreatPreview(prompt), [prompt]);
 
   const onRun = async () => {
-    const freshUser = getOrCreateUser();
-    if (!canRun(freshUser.plan, freshUser.usage_count)) {
-      setPaywallOpen(true);
-      return;
-    }
-
     setIsRunning(true);
     setCopyStatus('');
     try {
@@ -66,9 +56,6 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
       setResult(payload);
       const status: RunEntry['status'] = payload.intervention ? 'PROJECTED' : 'SAFE';
       setSession((prev) => [{ prompt, status, entropySacrificed: payload.semantic_diff_score }, ...prev].slice(0, 8));
-      const updated = { ...freshUser, usage_count: freshUser.usage_count + 1 };
-      persistUser(updated);
-      setRunCount(updated.usage_count);
     } catch (error) {
       setCopyStatus(error instanceof Error ? error.message : 'Unknown error');
     } finally {
@@ -79,18 +66,9 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
   const summary = result
     ? `Prompt: ${prompt.slice(0, 110)}\nLex Result: ${result.intervention ? 'INTERVENED' : 'PASS'}\nEntropy sacrificed: ${Math.round(result.semantic_diff_score * 100)}%`
     : '';
-  const hardGateReached = runCount >= 3;
-
-  if (hardGateReached) {
-    return <PaywallModal open onClose={() => {}} hardGate />;
-  }
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl2 glass-panel p-4 text-sm text-slate-300">
-        Usage: {runCount} / 3 trial runs
-      </div>
-
       <PromptBox
         prompt={prompt}
         setPrompt={setPrompt}
@@ -154,7 +132,6 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
       ) : null}
 
       {copyStatus ? <p className="text-sm text-slate-300">{copyStatus}</p> : null}
-      <PaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }

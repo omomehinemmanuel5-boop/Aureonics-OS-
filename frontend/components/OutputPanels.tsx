@@ -2,11 +2,16 @@
 
 import { LexResponse } from '@/lib/types';
 
+export function resolveFinalOutput(result: Pick<LexResponse, 'final_output' | 'governed_output' | 'raw_output'>): string {
+  return result.final_output?.trim() || result.governed_output?.trim() || result.raw_output?.trim() || 'No output returned.';
+}
+
 export function OutputPanels({ result }: { result: LexResponse | null }) {
   if (!result) return null;
 
   const predictedRisk = result.metrics?.predicted_risk ?? (result.intervention ? 80 : 25);
   const actualIntervention = result.metrics?.actual_intervention ?? Math.round((result.semantic_diff_score || 0) * 100);
+  const finalOutput = resolveFinalOutput(result);
 
   return (
     <div className="space-y-6 pb-20">
@@ -22,11 +27,11 @@ export function OutputPanels({ result }: { result: LexResponse | null }) {
 
       <TransformationHint label="AI Intervention Applied" value={`${actualIntervention}% governance`} color="gold" />
 
-      <OutputBlock title="FINAL SOVEREIGN OUTPUT" text={result.final_output} tone="green" />
+      <OutputBlock title="FINAL SOVEREIGN OUTPUT" text={finalOutput} tone="green" />
 
       <button
         onClick={async () => {
-          await navigator.clipboard.writeText(result.final_output);
+          await navigator.clipboard.writeText(finalOutput);
         }}
         className="mt-2 text-[11px] font-mono text-[#c8a84b] underline"
       >
