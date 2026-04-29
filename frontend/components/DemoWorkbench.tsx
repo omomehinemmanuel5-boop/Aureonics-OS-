@@ -47,6 +47,7 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
   const [copyStatus, setCopyStatus] = useState('');
   const [session, setSession] = useState<RunEntry[]>([]);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
 
   const threatPreview = useMemo(() => getThreatPreview(prompt), [prompt]);
 
@@ -55,11 +56,14 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
     setCopyStatus('');
     try {
       const payload = await runLex(prompt);
+      console.log("API RESPONSE:", payload);
       if (payload.upgrade_required === true) {
+        console.log("LIMIT HIT", payload);
         setShowUpgrade(true);
         setResult(null);
         return;
       }
+      setShowUpgrade(false);
       setResult(payload);
       const status: RunEntry['status'] = payload.intervention ? 'PROJECTED' : 'SAFE';
       setSession((prev) => [{ prompt, status, entropySacrificed: payload.semantic_diff_score }, ...prev].slice(0, 8));
@@ -88,8 +92,20 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
       />
 
       <p className="px-4 pb-2 text-xs text-white/50">{`${result?.remaining_free_runs ?? 10} runs remaining today`}</p>
-      <MetricsBar result={result} />
-      <OutputPanels result={result} />
+      <MetricsBar result={showUpgrade ? null : result} />
+      {!showUpgrade && result ? (
+        <>
+          <div className="flex justify-end">
+            <button
+              onClick={() => setShowDiff((prev) => !prev)}
+              className="rounded-lg border border-white/20 px-3 py-1 text-xs text-slate-200"
+            >
+              {showDiff ? "Hide Changes" : "View Changes"}
+            </button>
+          </div>
+          <OutputPanels result={result} showDiff={showDiff} />
+        </>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="rounded-xl2 glass-panel p-5 shadow-card">

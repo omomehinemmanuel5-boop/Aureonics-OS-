@@ -1,12 +1,13 @@
 'use client';
 
 import { LexResponse } from '@/lib/types';
+import { DiffView } from './DiffView';
 
 export function resolveFinalOutput(result: Pick<LexResponse, 'final_output' | 'governed_output' | 'raw_output'>): string {
   return result.final_output?.trim() || result.governed_output?.trim() || result.raw_output?.trim() || 'No output returned.';
 }
 
-export function OutputPanels({ result }: { result: LexResponse | null }) {
+export function OutputPanels({ result, showDiff = false }: { result: LexResponse | null; showDiff?: boolean }) {
   if (!result) return null;
 
   const predictedRisk = result.metrics?.predicted_risk ?? (result.intervention ? 80 : 25);
@@ -24,6 +25,13 @@ export function OutputPanels({ result }: { result: LexResponse | null }) {
       </div>
 
       <OutputBlock title="GOVERNED TRAJECTORY" text={result.governed_output} tone="gold" />
+
+      {showDiff ? (
+        <section className="space-y-2">
+          <h3 className="text-[11px] uppercase tracking-[0.15em] text-slate-400">View Changes (RAW → GOVERNED)</h3>
+          <DiffView diff={result.diff} />
+        </section>
+      ) : null}
 
       <TransformationHint label="AI Intervention Applied" value={`${actualIntervention}% governance`} color="gold" />
 
