@@ -1,3 +1,8 @@
+export type LexDiffChunk = {
+  type: 'unchanged' | 'removed' | 'added';
+  text: string;
+};
+
 export type LexResponse = {
   raw_output: string;
   governed_output: string;
@@ -18,4 +23,5 @@ export type LexResponse = {
     predicted_risk: number;
     actual_intervention: number;
   };
+  diff?: LexDiffChunk[];
 };
