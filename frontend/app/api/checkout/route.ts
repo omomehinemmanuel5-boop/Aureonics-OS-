@@ -31,8 +31,8 @@ function buildManualInstructions(input: {
   notes?: string;
   invoiceId: string;
 }) {
-  const paymentEmail = process.env.SALES_CONTACT_EMAIL || 'sales@lexaureon.ai';
-  const salesPhone = process.env.SALES_PHONE_E164 || '+2340000000000';
+  const paymentEmail = process.env.SALES_CONTACT_EMAIL || 'Lexaureon@gmail.com';
+  const salesPhone = process.env.SALES_PHONE_E164 || '+2349135275035';
   const termsDays = Number(process.env.MANUAL_INVOICE_TERMS_DAYS || '7');
   const due = new Date(Date.now() + termsDays * 24 * 60 * 60 * 1000).toISOString();
   const totalUsd = input.amountUsd * input.seats;
