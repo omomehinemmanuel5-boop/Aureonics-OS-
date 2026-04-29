@@ -1,0 +1,7 @@
+version: '3.9'
+services:
+  sales-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.sales-agent
+    command: python services/sales_agent/example_flow.py
