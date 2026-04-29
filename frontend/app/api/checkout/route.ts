@@ -74,8 +74,8 @@ function buildManualInstructions(input: {
 
 function validate(body: CheckoutRequest): { ok: true; plan: Plan; buyerEmail: string; companyName: string; seats: number; notes?: string } | { ok: false; error: string } {
   if (!body.plan || !(body.plan in USD_PRICES)) return { ok: false, error: 'Invalid plan requested' };
-  if (!body.buyerEmail || !EMAIL_RE.test(body.buyerEmail)) return { ok: false, error: 'Valid buyerEmail is required' };
-  if (!body.companyName || body.companyName.trim().length < 2) return { ok: false, error: 'Valid companyName is required' };
+  if (!body.buyerEmail || !EMAIL_RE.test(body.buyerEmail)) return { ok: false, error: 'Valid buyer email is required' };
+  if (!body.companyName || body.companyName.trim().length < 2) return { ok: false, error: 'Valid company name is required' };
   const seats = body.seats ?? 1;
   if (!Number.isInteger(seats) || seats < 1 || seats > 1000) return { ok: false, error: 'Seats must be an integer between 1 and 1000' };
 
