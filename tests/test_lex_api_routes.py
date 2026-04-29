@@ -51,3 +51,20 @@ def test_health_pricing_demo_and_checkout_stub():
 
     checkout = checkout_resp.json()
     assert checkout["detail"] == "Authentication required"
+
+
+def test_free_plan_daily_limit_and_upgrade_signal():
+    headers = {"x-forwarded-for": "203.0.113.101"}
+    for _ in range(10):
+        ok = client.post("/lex/run", headers=headers, json={"prompt": "Summarize contract terms."})
+        assert ok.status_code == 200
+        body = ok.json()
+        assert body.get("upgrade_required") is False
+
+    blocked = client.post("/lex/run", headers=headers, json={"prompt": "11th request"})
+    assert blocked.status_code == 200
+    data = blocked.json()
+    assert data["error"] == "LIMIT_REACHED"
+    assert data["upgrade_required"] is True
+    assert data["message"] == "You’ve used all 10 free runs today."
+    assert data["final_output"] == ""
