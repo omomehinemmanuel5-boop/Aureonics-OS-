@@ -7,7 +7,7 @@ type CheckoutResponse = {
   invoice_id?: string;
   next_action?: string;
   payment_instructions?: string[];
-  email_template?: string;
+  actions?: { mailto_url?: string; whatsapp_url?: string };
   error?: string;
 };
 
@@ -17,16 +17,18 @@ export function CheckoutButton({ plan }: { plan: Exclude<Plan, 'free'> }) {
   const [buyerEmail, setBuyerEmail] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [seats, setSeats] = useState(1);
+  const [actions, setActions] = useState<{ mailto_url?: string; whatsapp_url?: string } | null>(null);
 
   return (
     <div className="mt-4 space-y-2">
-      <input className="w-full rounded border px-2 py-1 text-xs" placeholder="Work email" value={buyerEmail} onChange={(e) => setBuyerEmail(e.target.value)} />
-      <input className="w-full rounded border px-2 py-1 text-xs" placeholder="Company name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
-      <input className="w-full rounded border px-2 py-1 text-xs" type="number" min={1} max={1000} value={seats} onChange={(e) => setSeats(Number(e.target.value || '1'))} />
+      <input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Company name" className="w-full rounded border px-2 py-1 text-sm" />
+      <input value={buyerEmail} onChange={(e) => setBuyerEmail(e.target.value)} placeholder="Work email" className="w-full rounded border px-2 py-1 text-sm" />
+      <input value={seats} onChange={(e) => setSeats(Number(e.target.value || '1'))} type="number" min={1} max={1000} className="w-full rounded border px-2 py-1 text-sm" />
       <button
         onClick={async () => {
           setLoading(true);
           setMessage(null);
+          setActions(null);
           const response = await fetch('/api/checkout', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -44,9 +46,7 @@ export function CheckoutButton({ plan }: { plan: Exclude<Plan, 'free'> }) {
               ...(data.payment_instructions ?? []),
             ];
             setMessage(details.join(' '));
-            if (data.email_template && navigator?.clipboard) {
-              await navigator.clipboard.writeText(data.email_template);
-            }
+            setActions(data.actions ?? null);
           }
 
           setLoading(false);
@@ -57,6 +57,12 @@ export function CheckoutButton({ plan }: { plan: Exclude<Plan, 'free'> }) {
         {loading ? 'Generating invoice…' : 'Get invoice'}
       </button>
       {message ? <p className="text-xs text-slate-600">{message}</p> : null}
+      {actions ? (
+        <div className="flex gap-2 text-xs">
+          {actions.mailto_url ? <a className="underline" href={actions.mailto_url}>Send Email</a> : null}
+          {actions.whatsapp_url ? <a className="underline" href={actions.whatsapp_url} target="_blank" rel="noreferrer">Send WhatsApp</a> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

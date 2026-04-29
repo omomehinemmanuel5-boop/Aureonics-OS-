@@ -17,12 +17,13 @@ describe('checkout api route', () => {
 
     expect(data.checkout_mode).toBe('manual_invoice');
     expect(data.plan).toBe('pro');
-    expect(data.unit_price_usd).toBe(15);
-    expect(data.amount_usd).toBe(45);
+    expect(data.unit_amount_usd).toBe(15);
+    expect(data.total_amount_usd).toBe(45);
     expect(typeof data.invoice_id).toBe('string');
     expect((data.invoice_id as string).startsWith('LEX-PRO-')).toBe(true);
     expect(Array.isArray(data.payment_instructions)).toBe(true);
-    expect(typeof data.email_template).toBe('string');
+    expect((data.actions as Record<string, string>).mailto_url).toContain('mailto:');
+    expect((data.actions as Record<string, string>).whatsapp_url).toContain('wa.me');
   });
 
   it('rejects invalid plans', async () => {
