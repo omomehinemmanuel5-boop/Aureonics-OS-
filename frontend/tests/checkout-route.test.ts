@@ -33,10 +33,10 @@ describe('checkout api route', () => {
     expect(data.error).toBe('Invalid plan requested');
   });
 
-  it('rejects missing buyer identity fields', async () => {
-    const response = await POST(req({ plan: 'pro', companyName: 'Acme' }) as never);
+  it('rejects invalid buyer email', async () => {
+    const response = await POST(req({ plan: 'pro', buyerEmail: 'not-an-email', companyName: 'Acme' }) as never);
     expect(response.status).toBe(400);
     const data = (await response.json()) as Record<string, unknown>;
-    expect(data.error).toBe('Valid buyerEmail is required');
+    expect(data.error).toBe('Valid buyer email is required');
   });
 });
