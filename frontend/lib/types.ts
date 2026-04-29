@@ -9,6 +9,9 @@ export type LexResponse = {
   upgrade_required?: boolean;
   run_count?: number;
   remaining_free_runs?: number;
+  usage_today?: number;
+  error?: string;
+  message?: string;
   metrics?: {
     entropy: number;
     meaning: number;

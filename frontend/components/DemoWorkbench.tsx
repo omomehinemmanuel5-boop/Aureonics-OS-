@@ -6,6 +6,7 @@ import { LexResponse } from '@/lib/types';
 import { PromptBox } from './PromptBox';
 import { OutputPanels } from './OutputPanels';
 import { MetricsBar } from './MetricsBar';
+import { UpgradeModal } from './UpgradeModal';
 
 type DemoWorkbenchProps = {
   mode: 'demo' | 'app';
@@ -45,6 +46,7 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [copyStatus, setCopyStatus] = useState('');
   const [session, setSession] = useState<RunEntry[]>([]);
+  const [showUpgrade, setShowUpgrade] = useState(false);
 
   const threatPreview = useMemo(() => getThreatPreview(prompt), [prompt]);
 
@@ -53,6 +55,11 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
     setCopyStatus('');
     try {
       const payload = await runLex(prompt);
+      if (payload.upgrade_required === true) {
+        setShowUpgrade(true);
+        setResult(null);
+        return;
+      }
       setResult(payload);
       const status: RunEntry['status'] = payload.intervention ? 'PROJECTED' : 'SAFE';
       setSession((prev) => [{ prompt, status, entropySacrificed: payload.semantic_diff_score }, ...prev].slice(0, 8));
@@ -69,6 +76,7 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
 
   return (
     <div className="space-y-6">
+      {showUpgrade && <UpgradeModal />}
       <PromptBox
         prompt={prompt}
         setPrompt={setPrompt}
@@ -79,9 +87,7 @@ export function DemoWorkbench({ mode }: DemoWorkbenchProps) {
         threatPreview={threatPreview}
       />
 
-      <p className="px-4 pb-2 text-xs text-white/50">
-        This response was automatically corrected to prevent risk while preserving intent.
-      </p>
+      <p className="px-4 pb-2 text-xs text-white/50">{`${result?.remaining_free_runs ?? 10} runs remaining today`}</p>
       <MetricsBar result={result} />
       <OutputPanels result={result} />
 

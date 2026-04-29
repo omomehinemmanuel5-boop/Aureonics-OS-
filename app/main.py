@@ -17,7 +17,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from app.database import Base, SessionLocal, engine
+from app.models import entities as _entities  # noqa: F401
 from app.safe_boot import load_kernel_safely
+from app.services.usage_service import get_today_usage, log_usage
 from sovereign_kernel_v2 import SovereignKernel
 
 
@@ -39,6 +42,11 @@ class DecisionResponse(BaseModel):
     plan: Literal["free", "pro", "enterprise"] = "free"
     watermark: str | None = None
     remaining_runs: int | None = None
+    remaining_free_runs: int | None = None
+    usage_today: int | None = None
+    error: str | None = None
+    upgrade_required: bool = False
+    message: str | None = None
     metrics: dict[str, float | int] | None = None
 
 
@@ -85,6 +93,8 @@ class CheckoutStubResponse(BaseModel):
 FREE_DAILY_LIMIT = 10
 PRO_MONTHLY_LIMIT = 2000
 _KERNEL_SINGLETON: SovereignKernel | None = None
+
+Base.metadata.create_all(bind=engine)
 
 
 AUTH_TOKEN_TTL_HOURS = 12
@@ -250,6 +260,29 @@ def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> Decisi
         app.state.kernel = _get_kernel()
     identity = _request_identity(request)
     plan = _get_plan(request)
+
+    if plan == "free":
+        with SessionLocal() as db:
+            today_usage = get_today_usage(db, identity)
+        if today_usage >= FREE_DAILY_LIMIT:
+            return DecisionResponse(
+                raw_output="",
+                governed_output="",
+                final_output="",
+                intervention=False,
+                intervention_reason="Usage limit reached",
+                semantic_diff_score=0.0,
+                M=0.0,
+                plan=plan,
+                watermark="Lex Demo",
+                remaining_runs=0,
+                remaining_free_runs=0,
+                usage_today=today_usage,
+                error="LIMIT_REACHED",
+                upgrade_required=True,
+                message="You’ve used all 10 free runs today.",
+            )
+
     allowed, remaining = _consume_quota(app, identity, plan)
 
     if not allowed:
@@ -264,6 +297,10 @@ def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> Decisi
             plan=plan,
             watermark=None,
             remaining_runs=0,
+            remaining_free_runs=0,
+            error="LIMIT_REACHED",
+            upgrade_required=True,
+            message="You’ve used all 10 free runs today.",
         )
 
     raw_output = (
@@ -292,6 +329,14 @@ def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> Decisi
     meaning_pct = round(m_val * 100, 2)
     predicted_risk = min(99, max(0, int(round(55 + entropy_pct * 0.4 + (10 if intervention else 0)))))
 
+    usage_today = None
+    remaining_free_runs = None
+    if plan == "free":
+        with SessionLocal() as db:
+            log_usage(db, identity)
+            usage_today = get_today_usage(db, identity)
+        remaining_free_runs = max(0, FREE_DAILY_LIMIT - usage_today)
+
     return DecisionResponse(
         raw_output=raw_output,
         governed_output=governed_output,
@@ -302,7 +347,9 @@ def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> Decisi
         M=m_val,
         plan=plan,
         watermark=watermark,
-        remaining_runs=remaining,
+        remaining_runs=remaining_free_runs if plan == "free" else remaining,
+        remaining_free_runs=remaining_free_runs,
+        usage_today=usage_today,
         metrics={
             "entropy": entropy_pct,
             "meaning": meaning_pct,
@@ -335,6 +382,7 @@ def _get_kernel() -> object:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
     app.state.kernel = _get_kernel()
     app.state.startup_errors = []
     app.state.usage_counts = {}
