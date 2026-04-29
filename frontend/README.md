@@ -3,15 +3,15 @@
 ## Stack
 - Next.js App Router
 - Tailwind CSS
-- Stripe Checkout
+- Invoice-first checkout (Stripe not required)
 - Existing backend API: `POST /lex/run`
 
 ## Routes
 - `/` Landing page (conversion-focused)
 - `/demo` Demo funnel with share-card loop
 - `/app` Product dashboard with no login/trial gate
-- `/pricing` Pricing + checkout
-- `/api/checkout` Stripe subscription checkout session creator
+- `/pricing` Pricing + invoice request flow
+- `/api/checkout` Manual invoice request creator
 
 ## Setup
 ```bash
@@ -27,9 +27,8 @@ npm run dev
 
 ## Environment Variables
 - `NEXT_PUBLIC_LEX_API_BASE_URL`: Backend origin for `/lex/run`
-- `STRIPE_SECRET_KEY`
-- `STRIPE_PRICE_ID_PRO`
-- `STRIPE_PRICE_ID_ENTERPRISE`
+- `SALES_CONTACT_EMAIL`: fallback contact for invoice fulfilment (optional)
+- `MANUAL_INVOICE_TERMS_DAYS`: invoice terms in days (optional, default 7)
 
 ## Troubleshooting
 - If the **FINAL SOVEREIGN OUTPUT** panel appears blank, the UI now auto-falls back to `governed_output` and then `raw_output`.
