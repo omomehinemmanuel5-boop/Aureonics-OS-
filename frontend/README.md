@@ -28,6 +28,7 @@ npm run dev
 ## Environment Variables
 - `NEXT_PUBLIC_LEX_API_BASE_URL`: Backend origin for `/lex/run`
 - `SALES_CONTACT_EMAIL`: fallback contact for invoice fulfilment (optional)
+- `SALES_PHONE_E164`: WhatsApp-enabled sales phone in E.164 format (optional)
 - `MANUAL_INVOICE_TERMS_DAYS`: invoice terms in days (optional, default 7)
 
 ## Troubleshooting

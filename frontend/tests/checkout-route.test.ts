@@ -11,22 +11,32 @@ function req(body: unknown) {
 
 describe('checkout api route', () => {
   it('returns manual invoice payload for valid pro plan', async () => {
-    const response = await POST(req({ plan: 'pro', buyerEmail: 'ceo@acme.com', companyName: 'Acme' }) as never);
+    const response = await POST(req({ plan: 'pro', buyerEmail: 'ceo@acme.com', companyName: 'Acme', seats: 3 }) as never);
     expect(response.status).toBe(200);
     const data = (await response.json()) as Record<string, unknown>;
 
     expect(data.checkout_mode).toBe('manual_invoice');
     expect(data.plan).toBe('pro');
-    expect(data.amount_usd).toBe(15);
+    expect(data.unit_amount_usd).toBe(15);
+    expect(data.total_amount_usd).toBe(45);
     expect(typeof data.invoice_id).toBe('string');
     expect((data.invoice_id as string).startsWith('LEX-PRO-')).toBe(true);
     expect(Array.isArray(data.payment_instructions)).toBe(true);
+    expect((data.actions as Record<string, string>).mailto_url).toContain('mailto:');
+    expect((data.actions as Record<string, string>).whatsapp_url).toContain('wa.me');
   });
 
   it('rejects invalid plans', async () => {
-    const response = await POST(req({ plan: 'free' }) as never);
+    const response = await POST(req({ plan: 'free', buyerEmail: 'ceo@acme.com', companyName: 'Acme' }) as never);
     expect(response.status).toBe(400);
     const data = (await response.json()) as Record<string, unknown>;
     expect(data.error).toBe('Invalid plan requested');
+  });
+
+  it('rejects missing buyer identity fields', async () => {
+    const response = await POST(req({ plan: 'pro', companyName: 'Acme' }) as never);
+    expect(response.status).toBe(400);
+    const data = (await response.json()) as Record<string, unknown>;
+    expect(data.error).toBe('Valid buyerEmail is required');
   });
 });
