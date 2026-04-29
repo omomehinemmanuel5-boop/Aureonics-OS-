@@ -1,0 +1,8 @@
+version: '3.9'
+services:
+  lex-aureon-enterprise:
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: bash -lc "pip install -q pytest && python -m services.enterprise_agent.simulation"
