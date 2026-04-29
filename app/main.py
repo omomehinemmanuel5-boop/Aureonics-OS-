@@ -31,6 +31,12 @@ class RunRequest(BaseModel):
     demo_mode: bool = False
 
 
+class DiffChunk(BaseModel):
+    type: Literal["unchanged", "removed", "added"]
+    text: str
+
+
+
 class DecisionResponse(BaseModel):
     raw_output: str
     governed_output: str
@@ -48,8 +54,37 @@ class DecisionResponse(BaseModel):
     upgrade_required: bool = False
     message: str | None = None
     metrics: dict[str, float | int] | None = None
+    diff: list[DiffChunk] = []
 
 
+
+
+def compute_diff(raw_output: str, governed_output: str) -> list[DiffChunk]:
+    chunks: list[DiffChunk] = []
+    matcher = SequenceMatcher(None, raw_output.split(), governed_output.split())
+
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            text = " ".join(raw_output.split()[i1:i2])
+            if text:
+                chunks.append(DiffChunk(type="unchanged", text=text))
+        elif tag == "delete":
+            text = " ".join(raw_output.split()[i1:i2])
+            if text:
+                chunks.append(DiffChunk(type="removed", text=text))
+        elif tag == "insert":
+            text = " ".join(governed_output.split()[j1:j2])
+            if text:
+                chunks.append(DiffChunk(type="added", text=text))
+        elif tag == "replace":
+            removed = " ".join(raw_output.split()[i1:i2])
+            added = " ".join(governed_output.split()[j1:j2])
+            if removed:
+                chunks.append({"type": "removed", "text": removed})
+            if added:
+                chunks.append({"type": "added", "text": added})
+
+    return chunks
 class RegisterRequest(BaseModel):
     email: str = Field(min_length=5, max_length=320)
     password: str = Field(min_length=10, max_length=128)
@@ -281,6 +316,7 @@ def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> Decisi
                 error="LIMIT_REACHED",
                 upgrade_required=True,
                 message="You’ve used all 10 free runs today.",
+                diff=[],
             )
 
     allowed, remaining = _consume_quota(app, identity, plan)
@@ -301,6 +337,7 @@ def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> Decisi
             error="LIMIT_REACHED",
             upgrade_required=True,
             message="You’ve used all 10 free runs today.",
+            diff=[],
         )
 
     raw_output = (
@@ -311,6 +348,7 @@ def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> Decisi
     governed_output, reason = _govern_text(raw_output)
 
     semantic_diff_score = _semantic_diff_score(raw_output, governed_output)
+    diff = compute_diff(raw_output, governed_output)
     m_val = round(max(0.0, 1.0 - semantic_diff_score), 6)
     intervention = semantic_diff_score > 0.12
 
@@ -356,6 +394,7 @@ def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> Decisi
             "predicted_risk": predicted_risk,
             "actual_intervention": entropy_pct,
         },
+        diff=diff,
     )
 
 
