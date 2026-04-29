@@ -1,8 +1,8 @@
-version: '3.8'
+version: '3.9'
 services:
-  growth-engine:
+  lex-aureon-enterprise:
     image: python:3.11-slim
     working_dir: /app
     volumes:
       - ./:/app
-    command: bash -lc "pip install -r requirements.txt && python -m services.growth.engine"
+    command: bash -lc "pip install -q pytest && python -m services.enterprise_agent.simulation"
