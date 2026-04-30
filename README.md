@@ -148,6 +148,18 @@ Then the backend will redirect:
 
 Use `GET /frontend/status` to verify which mode is active.
 
+Quick check:
+```bash
+python scripts/check_frontend_connection.py https://your-backend-domain.com
+```
+
+
+## Deployment Readiness
+
+For a production deployment checklist and hardening sequence, see `docs/deployment_readiness_next_steps.md`.
+
+To switch website traffic to the new Next.js frontend, follow `docs/frontend_cutover_guide.md`.
+
 ## Local Run
 
 ```bash
