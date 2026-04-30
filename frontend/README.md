@@ -35,6 +35,16 @@ npm run dev
 - If the **FINAL SOVEREIGN OUTPUT** panel appears blank, the UI now auto-falls back to `governed_output` and then `raw_output`.
 - If runs are not executing, verify backend is reachable at `NEXT_PUBLIC_LEX_API_BASE_URL` and that `POST /lex/run` returns JSON.
 
+## Website optimization defaults (enabled)
+
+- SEO metadata wired in `app/layout.tsx` (Open Graph + Twitter cards + canonical metadata base).
+- Search crawler helpers:
+  - `app/robots.ts`
+  - `app/sitemap.ts`
+- API resilience in `lib/api.ts`:
+  - 15s request timeout via `AbortController`
+  - `cache: 'no-store'` for governed run requests to avoid stale inference responses
+
 ## Landing page conversion architecture (2026-04-29)
 
 The `/` page now serves as a governance-first SaaS funnel:
