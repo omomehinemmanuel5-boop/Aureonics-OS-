@@ -14,7 +14,8 @@ from sqlalchemy import desc
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.database import Base, SessionLocal, engine
@@ -77,7 +78,7 @@ class TrustReceiptResponse(BaseModel):
     M: float
     stability_timeline: list[dict[str, float | str]]
     integrity_signature: str
-    signature_key_id: str = "v1"
+    key_id: str = "v1"
     receipt_version: Literal["1.0"] = "1.0"
 
 
@@ -127,6 +128,11 @@ class TrustReceiptExportResponse(BaseModel):
     export_hash: str
     ledger_chain_hash: str
     signed_export: dict[str, object]
+
+
+class ExportVerifyRequest(BaseModel):
+    signed_export: dict[str, object]
+    export_hash: str
 
 
 def compute_diff(raw_output: str, governed_output: str) -> list[DiffChunk]:
@@ -212,17 +218,24 @@ def _token_secret() -> str:
     return os.getenv("LEX_AUTH_SECRET", "lex-dev-secret-change-me")
 
 
-def _audit_keyring() -> tuple[str, dict[str, str]]:
-    active = os.getenv("LEX_AUDIT_ACTIVE_KEY_ID", "v1")
-    raw = os.getenv("LEX_AUDIT_KEYRING", "")
-    keys: dict[str, str] = {}
-    for pair in [part.strip() for part in raw.split(",") if part.strip()]:
-        if ":" in pair:
-            kid, secret = pair.split(":", 1)
-            keys[kid.strip()] = secret.strip()
-    if active not in keys:
-        keys[active] = _token_secret()
-    return active, keys
+def _audit_keys() -> dict[str, str]:
+    raw = os.getenv("LEX_AUDIT_KEYS_JSON", "").strip()
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict) and parsed:
+                return {str(k): str(v) for k, v in parsed.items()}
+        except Exception:
+            pass
+    return {"v1": _token_secret()}
+
+
+def _active_audit_key_id() -> str:
+    keys = _audit_keys()
+    configured = os.getenv("LEX_ACTIVE_AUDIT_KEY_ID", "").strip()
+    if configured and configured in keys:
+        return configured
+    return sorted(keys.keys())[0]
 
 
 def _frontend_base_url() -> str | None:
@@ -340,9 +353,9 @@ def _sha256_text(value: str) -> str:
 
 
 def _trust_receipt_signature(payload: dict[str, object], key_id: str | None = None) -> str:
-    active_key, keys = _audit_keyring()
-    kid = key_id or active_key
-    secret = keys.get(kid, keys[active_key])
+    resolved_key_id = key_id or _active_audit_key_id()
+    keys = _audit_keys()
+    secret = keys.get(resolved_key_id) or _token_secret()
     body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
@@ -375,7 +388,6 @@ def _persist_ledger_entry(receipt: TrustReceiptResponse, tier: str) -> None:
                 run_id=receipt.run_id,
                 receipt_json=entry_body,
                 receipt_signature=receipt.integrity_signature,
-                signature_key_id=receipt.signature_key_id,
                 tier=tier,
                 value_proposition=_tier_value_prop(tier),
                 badge_hash=_badge_hash_for_receipt(receipt),
@@ -623,24 +635,14 @@ def create_app() -> FastAPI:
         frontend = _frontend_base_url()
         if frontend:
             return RedirectResponse(url=f"{frontend}/", status_code=307)
-        return JSONResponse(status_code=503, content={"error": "FRONTEND_URL_NOT_CONFIGURED", "message": "Set LEX_FRONTEND_BASE_URL to route traffic to the Next.js frontend."})
+        return FileResponse("app/static/index.html")
 
     @app.get("/dashboard", include_in_schema=False)
     def dashboard():
         frontend = _frontend_base_url()
         if frontend:
             return RedirectResponse(url=f"{frontend}/app", status_code=307)
-        return JSONResponse(status_code=503, content={"error": "FRONTEND_URL_NOT_CONFIGURED", "message": "Set LEX_FRONTEND_BASE_URL to route traffic to the Next.js frontend."})
-
-    @app.get("/frontend/status")
-    def frontend_status():
-        return {
-            "mode": "external_nextjs_only",
-            "frontend_base_url": frontend_base_url or None,
-            "landing_route": f"{frontend_base_url}/" if frontend_base_url else None,
-            "app_route": f"{frontend_base_url}/app" if frontend_base_url else None,
-            "configured": bool(frontend_base_url),
-        }
+        return FileResponse("app/static/console.html")
 
     @app.get("/health")
     def health():
@@ -798,9 +800,9 @@ def create_app() -> FastAPI:
             "M": response.M,
             "stability_timeline": timeline,
         }
-        active_key, _ = _audit_keyring()
-        signature = _trust_receipt_signature(receipt_payload, active_key)
-        receipt = TrustReceiptResponse(**receipt_payload, integrity_signature=signature, signature_key_id=active_key)
+        key_id = _active_audit_key_id()
+        signature = _trust_receipt_signature(receipt_payload, key_id=key_id)
+        receipt = TrustReceiptResponse(**receipt_payload, integrity_signature=signature, key_id=key_id)
         app.state.trust_receipts[run_id] = receipt.dict()
         tier = _get_plan(request)
         background_tasks.add_task(_persist_ledger_entry, receipt, tier)
@@ -828,12 +830,12 @@ def create_app() -> FastAPI:
             "tier": row.tier,
             "value_proposition": row.value_proposition,
             "receipt_signature": row.receipt_signature,
-            "signature_key_id": row.signature_key_id,
             "badge_hash": badge_hash,
             "generated_at": receipt.generated_at,
             "ledger_chain_hash": row.chain_hash,
+            "key_id": receipt.key_id,
         }
-        export_hash = _trust_receipt_signature(signed_export)
+        export_hash = _trust_receipt_signature(signed_export, key_id=receipt.key_id)
         return TrustReceiptExportResponse(
             run_id=run_id,
             receipt=receipt,
@@ -866,9 +868,9 @@ def create_app() -> FastAPI:
     def verify_trust_receipt(payload: TrustReceiptVerifyRequest):
         receipt = payload.receipt.dict()
         provided_signature = str(receipt.pop("integrity_signature", ""))
-        key_id = str(receipt.pop("signature_key_id", "v1"))
         receipt.pop("receipt_version", None)
-        expected_signature = _trust_receipt_signature(receipt, key_id)
+        key_id = str(receipt.pop("key_id", "v1"))
+        expected_signature = _trust_receipt_signature(receipt, key_id=key_id)
         is_valid = hmac.compare_digest(expected_signature, provided_signature)
         reason = "Signature valid" if is_valid else "Signature mismatch"
         return TrustReceiptVerifyResponse(
@@ -877,10 +879,18 @@ def create_app() -> FastAPI:
             expected_signature=expected_signature,
         )
 
-    @app.get("/lex/audit/keys")
+    @app.post("/lex/trust-receipt/verify-export")
+    def verify_export(payload: ExportVerifyRequest):
+        signed_export = dict(payload.signed_export)
+        key_id = str(signed_export.get("key_id", "v1"))
+        expected = _trust_receipt_signature(signed_export, key_id=key_id)
+        return {"valid": hmac.compare_digest(expected, payload.export_hash), "expected_export_hash": expected, "key_id": key_id}
+
+    @app.get("/lex/audit-keys")
     def audit_keys():
-        active, keys = _audit_keyring()
-        fingerprints = {kid: _sha256_text(secret)[:16] for kid, secret in keys.items()}
+        keys = _audit_keys()
+        active = _active_audit_key_id()
+        fingerprints = {k: _sha256_text(v)[:16] for k, v in keys.items()}
         return {"active_key_id": active, "available_key_ids": sorted(keys.keys()), "fingerprints": fingerprints}
 
 

@@ -26,7 +26,8 @@ This creates a concrete “before/after” demo that buyers understand in minute
 - **Proof-of-sovereignty badge**: `GET /lex/trust-receipt/{run_id}/badge`
 - **Signed export bundle**: `GET /lex/trust-receipt/{run_id}/export`
 - **Ledger chain verification**: `GET /lex/audit-ledger/verify`
-- **Audit key metadata**: `GET /lex/audit/keys`
+- **Audit key metadata**: `GET /lex/audit-keys`
+- **Export signature verification**: `POST /lex/trust-receipt/verify-export`
 - **Operational endpoints**: `GET /health`, `GET /pricing`, `GET /demo`
 - **Auth endpoints**: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
 - **Stripe-ready stub**: `POST /billing/checkout` (auth required)
