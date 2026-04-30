@@ -79,6 +79,15 @@ class TrustReceiptResponse(BaseModel):
     receipt_version: Literal["1.0"] = "1.0"
 
 
+class TrustReceiptVerifyRequest(BaseModel):
+    receipt: TrustReceiptResponse
+
+
+class TrustReceiptVerifyResponse(BaseModel):
+    valid: bool
+    reason: str
+    expected_signature: str
+
 
 def compute_diff(raw_output: str, governed_output: str) -> list[DiffChunk]:
     raw_words = raw_output.split()
@@ -240,6 +249,8 @@ def _ensure_state(app: FastAPI) -> None:
         app.state.usage_counts = {}
     if not hasattr(app.state, "users"):
         app.state.users = {}
+    if not hasattr(app.state, "trust_receipts"):
+        app.state.trust_receipts = {}
 
 
 def _get_kernel() -> SovereignKernel:
@@ -463,6 +474,7 @@ async def lifespan(app: FastAPI):
     app.state.startup_errors = []
     app.state.usage_counts = {}
     app.state.users = {}
+    app.state.trust_receipts = {}
 
     kernel_result = load_kernel_safely()
     app.state.kernel = kernel_result.get("kernel") or app.state.kernel
@@ -504,14 +516,16 @@ def create_app() -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def landing():
-        if frontend_base_url:
-            return RedirectResponse(url=f"{frontend_base_url}/", status_code=307)
+        frontend = _frontend_base_url()
+        if frontend:
+            return RedirectResponse(url=f"{frontend}/", status_code=307)
         return FileResponse("app/static/index.html")
 
     @app.get("/dashboard", include_in_schema=False)
     def dashboard():
-        if frontend_base_url:
-            return RedirectResponse(url=f"{frontend_base_url}/app", status_code=307)
+        frontend = _frontend_base_url()
+        if frontend:
+            return RedirectResponse(url=f"{frontend}/app", status_code=307)
         return FileResponse("app/static/console.html")
 
     @app.get("/frontend/status")
@@ -680,7 +694,31 @@ def create_app() -> FastAPI:
             "stability_timeline": timeline,
         }
         signature = _trust_receipt_signature(receipt_payload)
-        return TrustReceiptResponse(**receipt_payload, integrity_signature=signature)
+        receipt = TrustReceiptResponse(**receipt_payload, integrity_signature=signature)
+        app.state.trust_receipts[run_id] = receipt.dict()
+        return receipt
+
+    @app.get("/lex/trust-receipt/{run_id}", response_model=TrustReceiptResponse)
+    def get_trust_receipt(run_id: str):
+        _ensure_state(app)
+        found = app.state.trust_receipts.get(run_id)
+        if not found:
+            raise HTTPException(status_code=404, detail="Trust receipt not found")
+        return TrustReceiptResponse(**found)
+
+    @app.post("/lex/trust-receipt/verify", response_model=TrustReceiptVerifyResponse)
+    def verify_trust_receipt(payload: TrustReceiptVerifyRequest):
+        receipt = payload.receipt.dict()
+        provided_signature = str(receipt.pop("integrity_signature", ""))
+        receipt.pop("receipt_version", None)
+        expected_signature = _trust_receipt_signature(receipt)
+        is_valid = hmac.compare_digest(expected_signature, provided_signature)
+        reason = "Signature valid" if is_valid else "Signature mismatch"
+        return TrustReceiptVerifyResponse(
+            valid=is_valid,
+            reason=reason,
+            expected_signature=expected_signature,
+        )
 
     return app
 

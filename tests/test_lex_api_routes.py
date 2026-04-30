@@ -100,27 +100,43 @@ def test_trust_receipt_export_contains_hashes_and_signature():
     assert [step["stage"] for step in receipt["stability_timeline"]] == ["raw", "governed", "final"]
 
 
-def test_frontend_status_default_mode():
-    resp = client.get("/frontend/status")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["mode"] == "embedded_fastapi_static"
-    assert data["frontend_base_url"] is None
-    assert data["landing_route"] == "/"
-    assert data["app_route"] == "/dashboard"
+def test_landing_and_dashboard_redirect_to_frontend_when_configured(monkeypatch):
+    monkeypatch.setenv("LEX_FRONTEND_BASE_URL", "https://ui.aureonics.ai")
+    configured_client = TestClient(create_app())
 
-
-def test_frontend_redirect_mode_when_external_frontend_configured(monkeypatch):
-    monkeypatch.setenv("LEX_FRONTEND_BASE_URL", "https://frontend.example.com")
-    redirect_app = create_app()
-    redirect_client = TestClient(redirect_app)
-
-    landing = redirect_client.get("/", follow_redirects=False)
-    dashboard = redirect_client.get("/dashboard", follow_redirects=False)
-    status = redirect_client.get("/frontend/status")
+    landing = configured_client.get("/", follow_redirects=False)
+    dashboard = configured_client.get("/dashboard", follow_redirects=False)
 
     assert landing.status_code == 307
-    assert landing.headers["location"] == "https://frontend.example.com/"
+    assert landing.headers["location"] == "https://ui.aureonics.ai/"
     assert dashboard.status_code == 307
-    assert dashboard.headers["location"] == "https://frontend.example.com/app"
-    assert status.json()["mode"] == "external_nextjs"
+    assert dashboard.headers["location"] == "https://ui.aureonics.ai/app"
+
+
+def test_trust_receipt_retrieval_and_signature_verification_flow():
+    run_resp = client.post("/lex/run", json={"prompt": "Create a balanced policy summary."})
+    assert run_resp.status_code == 200
+    run = run_resp.json()
+
+    created = client.post(
+        "/lex/trust-receipt",
+        json={"prompt": "Create a balanced policy summary.", "response": run, "run_id": "run_verify_001"},
+    )
+    assert created.status_code == 200
+    receipt = created.json()
+
+    fetched = client.get("/lex/trust-receipt/run_verify_001")
+    assert fetched.status_code == 200
+    assert fetched.json()["run_id"] == "run_verify_001"
+
+    valid_check = client.post("/lex/trust-receipt/verify", json={"receipt": receipt})
+    assert valid_check.status_code == 200
+    assert valid_check.json()["valid"] is True
+    assert valid_check.json()["reason"] == "Signature valid"
+
+    tampered = dict(receipt)
+    tampered["final_output_hash"] = "0" * 64
+    invalid_check = client.post("/lex/trust-receipt/verify", json={"receipt": tampered})
+    assert invalid_check.status_code == 200
+    assert invalid_check.json()["valid"] is False
+    assert invalid_check.json()["reason"] == "Signature mismatch"

@@ -19,6 +19,8 @@ This creates a concrete “before/after” demo that buyers understand in minute
 - **Dashboard**: `/dashboard` (minimal SaaS runner)
 - **Core API endpoint**: `POST /lex/run`
 - **Trust receipt export**: `POST /lex/trust-receipt`
+- **Trust receipt retrieval**: `GET /lex/trust-receipt/{run_id}`
+- **Trust receipt verification**: `POST /lex/trust-receipt/verify`
 - **Operational endpoints**: `GET /health`, `GET /pricing`, `GET /demo`
 - **Auth endpoints**: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
 - **Stripe-ready stub**: `POST /billing/checkout` (auth required)
@@ -47,6 +49,14 @@ Generate an auditable trust receipt from a completed governed run. The receipt i
 - Integrity HMAC signature (`integrity_signature`) for tamper detection
 
 Use this endpoint to produce buyer-facing trust artifacts for compliance and procurement review.
+
+### Trust Receipt Operations
+
+After generating a receipt, you can:
+- Retrieve by run id: `GET /lex/trust-receipt/{run_id}`
+- Verify tamper integrity: `POST /lex/trust-receipt/verify` with the receipt payload
+
+Verification recomputes the expected HMAC signature from the canonical receipt payload and compares it against `integrity_signature`.
 
 Frontend displays only:
 - `final_output` (primary)
