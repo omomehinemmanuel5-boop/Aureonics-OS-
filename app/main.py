@@ -57,6 +57,27 @@ class DecisionResponse(BaseModel):
     diff: list[DiffChunk] = []
 
 
+class TrustReceiptRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=8000)
+    response: DecisionResponse
+    run_id: str | None = Field(default=None, min_length=3, max_length=128)
+
+
+class TrustReceiptResponse(BaseModel):
+    run_id: str
+    generated_at: str
+    input_hash: str
+    raw_output_hash: str
+    governed_output_hash: str
+    final_output_hash: str
+    intervention: bool
+    intervention_reason: str
+    semantic_diff_score: float
+    M: float
+    stability_timeline: list[dict[str, float | str]]
+    integrity_signature: str
+    receipt_version: Literal["1.0"] = "1.0"
+
 
 
 def compute_diff(raw_output: str, governed_output: str) -> list[DiffChunk]:
@@ -241,6 +262,15 @@ def _request_identity(request: Request) -> str:
 
 def _semantic_diff_score(a: str, b: str) -> float:
     return round(1.0 - SequenceMatcher(None, a or "", b or "").ratio(), 6)
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _trust_receipt_signature(payload: dict[str, object]) -> str:
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hmac.new(_token_secret().encode("utf-8"), body, hashlib.sha256).hexdigest()
 
 
 def _govern_text(raw: str) -> tuple[str, str]:
@@ -605,6 +635,33 @@ def create_app() -> FastAPI:
             ],
             note="Manual payment mode is active. Stripe auto-checkout is intentionally disabled.",
         )
+
+    @app.post("/lex/trust-receipt", response_model=TrustReceiptResponse)
+    def trust_receipt(payload: TrustReceiptRequest):
+        now_dt = _now()
+        run_id = payload.run_id or f"lexrun_{int(now_dt.timestamp())}_{secrets.token_hex(4)}"
+        response = payload.response
+
+        timeline = [
+            {"stage": "raw", "stability": 0.0},
+            {"stage": "governed", "stability": round(response.M, 6)},
+            {"stage": "final", "stability": round(response.M if response.intervention else 1.0, 6)},
+        ]
+        receipt_payload: dict[str, object] = {
+            "run_id": run_id,
+            "generated_at": now_dt.isoformat(),
+            "input_hash": _sha256_text(payload.prompt),
+            "raw_output_hash": _sha256_text(response.raw_output),
+            "governed_output_hash": _sha256_text(response.governed_output),
+            "final_output_hash": _sha256_text(response.final_output),
+            "intervention": response.intervention,
+            "intervention_reason": response.intervention_reason,
+            "semantic_diff_score": response.semantic_diff_score,
+            "M": response.M,
+            "stability_timeline": timeline,
+        }
+        signature = _trust_receipt_signature(receipt_payload)
+        return TrustReceiptResponse(**receipt_payload, integrity_signature=signature)
 
     return app
 
