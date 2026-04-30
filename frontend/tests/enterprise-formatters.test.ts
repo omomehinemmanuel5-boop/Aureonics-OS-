@@ -8,12 +8,13 @@ const baseResult = {
   intervention: false,
   intervention_reason: '',
   semantic_diff_score: 0,
+  M: 0.5,
   metrics: undefined,
 };
 
 describe('enterprise formatters', () => {
   it('uses predicted risk metric when present', () => {
-    expect(getEnterpriseRiskScore({ ...baseResult, metrics: { predicted_risk: 63 } })).toBe(0.63);
+    expect(getEnterpriseRiskScore({ ...baseResult, metrics: { entropy: 0.4, meaning: 0.9, predicted_risk: 63, actual_intervention: 0 } })).toBe(0.63);
   });
 
   it('falls back to intervention defaults when metric missing', () => {

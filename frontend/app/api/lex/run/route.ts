@@ -8,23 +8,33 @@ function getBackendBaseUrl() {
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
-  const backendBaseUrl = getBackendBaseUrl();
+  const backendBaseUrl = getBackendBaseUrl().replace(/\/$/, '');
 
-  const upstream = await fetch(`${backendBaseUrl}/lex/run`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    cache: 'no-store',
-    body
-  });
+  try {
+    const upstream = await fetch(`${backendBaseUrl}/lex/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      cache: 'no-store',
+      body
+    });
 
-  const responseBody = await upstream.text();
+    const responseBody = await upstream.text();
 
-  return new NextResponse(responseBody, {
-    status: upstream.status,
-    headers: {
-      'Content-Type': upstream.headers.get('Content-Type') ?? 'application/json'
-    }
-  });
+    return new NextResponse(responseBody, {
+      status: upstream.status,
+      headers: {
+        'Content-Type': upstream.headers.get('Content-Type') ?? 'application/json'
+      }
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: 'Failed to reach Lex backend',
+        detail: error instanceof Error ? error.message : 'Unknown upstream error'
+      },
+      { status: 502 }
+    );
+  }
 }
