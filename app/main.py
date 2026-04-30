@@ -13,8 +13,7 @@ from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from app.database import Base, SessionLocal, engine
@@ -491,7 +490,6 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.mount("/static", StaticFiles(directory="app/static"), name="static")
     frontend_base_url = os.getenv("LEX_FRONTEND_BASE_URL", "").strip().rstrip("/")
 
     @app.middleware("http")
@@ -519,22 +517,23 @@ def create_app() -> FastAPI:
         frontend = _frontend_base_url()
         if frontend:
             return RedirectResponse(url=f"{frontend}/", status_code=307)
-        return FileResponse("app/static/index.html")
+        return JSONResponse(status_code=503, content={"error": "FRONTEND_URL_NOT_CONFIGURED", "message": "Set LEX_FRONTEND_BASE_URL to route traffic to the Next.js frontend."})
 
     @app.get("/dashboard", include_in_schema=False)
     def dashboard():
         frontend = _frontend_base_url()
         if frontend:
             return RedirectResponse(url=f"{frontend}/app", status_code=307)
-        return FileResponse("app/static/console.html")
+        return JSONResponse(status_code=503, content={"error": "FRONTEND_URL_NOT_CONFIGURED", "message": "Set LEX_FRONTEND_BASE_URL to route traffic to the Next.js frontend."})
 
     @app.get("/frontend/status")
     def frontend_status():
         return {
-            "mode": "external_nextjs" if frontend_base_url else "embedded_fastapi_static",
+            "mode": "external_nextjs_only",
             "frontend_base_url": frontend_base_url or None,
-            "landing_route": "/" if not frontend_base_url else f"{frontend_base_url}/",
-            "app_route": "/dashboard" if not frontend_base_url else f"{frontend_base_url}/app",
+            "landing_route": f"{frontend_base_url}/" if frontend_base_url else None,
+            "app_route": f"{frontend_base_url}/app" if frontend_base_url else None,
+            "configured": bool(frontend_base_url),
         }
 
     @app.get("/health")

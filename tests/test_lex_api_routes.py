@@ -113,6 +113,19 @@ def test_landing_and_dashboard_redirect_to_frontend_when_configured(monkeypatch)
     assert dashboard.headers["location"] == "https://ui.aureonics.ai/app"
 
 
+
+
+def test_landing_and_dashboard_require_frontend_configuration(monkeypatch):
+    monkeypatch.delenv("LEX_FRONTEND_BASE_URL", raising=False)
+    unconfigured_client = TestClient(create_app())
+
+    landing = unconfigured_client.get("/", follow_redirects=False)
+    dashboard = unconfigured_client.get("/dashboard", follow_redirects=False)
+
+    assert landing.status_code == 503
+    assert dashboard.status_code == 503
+    assert landing.json()["error"] == "FRONTEND_URL_NOT_CONFIGURED"
+
 def test_trust_receipt_retrieval_and_signature_verification_flow():
     run_resp = client.post("/lex/run", json={"prompt": "Create a balanced policy summary."})
     assert run_resp.status_code == 200
