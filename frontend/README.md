@@ -46,16 +46,6 @@ npm run dev
   - 15s request timeout via `AbortController`
   - `cache: 'no-store'` for governed run requests to avoid stale inference responses
 
-## Website optimization defaults (enabled)
-
-- SEO metadata wired in `app/layout.tsx` (Open Graph + Twitter cards + canonical metadata base).
-- Search crawler helpers:
-  - `app/robots.ts`
-  - `app/sitemap.ts`
-- API resilience in `lib/api.ts`:
-  - 15s request timeout via `AbortController`
-  - `cache: 'no-store'` for governed run requests to avoid stale inference responses
-
 ## Landing page conversion architecture (2026-04-29)
 
 The `/` page now serves as a governance-first SaaS funnel:
