@@ -480,6 +480,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.mount("/static", StaticFiles(directory="app/static"), name="static")
+    frontend_base_url = os.getenv("LEX_FRONTEND_BASE_URL", "").strip().rstrip("/")
 
     @app.middleware("http")
     async def auth_subscription_middleware(request: Request, call_next):
@@ -503,17 +504,24 @@ def create_app() -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def landing():
-        frontend = _frontend_base_url()
-        if frontend:
-            return RedirectResponse(url=f"{frontend}/", status_code=307)
+        if frontend_base_url:
+            return RedirectResponse(url=f"{frontend_base_url}/", status_code=307)
         return FileResponse("app/static/index.html")
 
     @app.get("/dashboard", include_in_schema=False)
     def dashboard():
-        frontend = _frontend_base_url()
-        if frontend:
-            return RedirectResponse(url=f"{frontend}/app", status_code=307)
+        if frontend_base_url:
+            return RedirectResponse(url=f"{frontend_base_url}/app", status_code=307)
         return FileResponse("app/static/console.html")
+
+    @app.get("/frontend/status")
+    def frontend_status():
+        return {
+            "mode": "external_nextjs" if frontend_base_url else "embedded_fastapi_static",
+            "frontend_base_url": frontend_base_url or None,
+            "landing_route": "/" if not frontend_base_url else f"{frontend_base_url}/",
+            "app_route": "/dashboard" if not frontend_base_url else f"{frontend_base_url}/app",
+        }
 
     @app.get("/health")
     def health():
