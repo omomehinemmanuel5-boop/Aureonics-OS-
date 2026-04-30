@@ -102,6 +102,7 @@ class AuditLedgerEntry(Base):
     run_id: Mapped[str] = mapped_column(String, primary_key=True)
     receipt_json: Mapped[str] = mapped_column(Text, nullable=False)
     receipt_signature: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    signature_key_id: Mapped[str] = mapped_column(String(64), nullable=False, default="v1")
     tier: Mapped[str] = mapped_column(String(24), nullable=False, default="free")
     value_proposition: Mapped[str] = mapped_column(Text, nullable=False)
     badge_hash: Mapped[str] = mapped_column(String(64), nullable=False)

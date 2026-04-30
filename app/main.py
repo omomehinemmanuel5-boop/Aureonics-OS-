@@ -78,6 +78,7 @@ class TrustReceiptResponse(BaseModel):
     M: float
     stability_timeline: list[dict[str, float | str]]
     integrity_signature: str
+    signature_key_id: str = "v1"
     receipt_version: Literal["1.0"] = "1.0"
 
 
@@ -212,6 +213,19 @@ def _token_secret() -> str:
     return os.getenv("LEX_AUTH_SECRET", "lex-dev-secret-change-me")
 
 
+def _audit_keyring() -> tuple[str, dict[str, str]]:
+    active = os.getenv("LEX_AUDIT_ACTIVE_KEY_ID", "v1")
+    raw = os.getenv("LEX_AUDIT_KEYRING", "")
+    keys: dict[str, str] = {}
+    for pair in [part.strip() for part in raw.split(",") if part.strip()]:
+        if ":" in pair:
+            kid, secret = pair.split(":", 1)
+            keys[kid.strip()] = secret.strip()
+    if active not in keys:
+        keys[active] = _token_secret()
+    return active, keys
+
+
 def _frontend_base_url() -> str | None:
     configured = os.getenv("LEX_FRONTEND_BASE_URL", "").strip().rstrip("/")
     return configured or None
@@ -326,9 +340,12 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _trust_receipt_signature(payload: dict[str, object]) -> str:
+def _trust_receipt_signature(payload: dict[str, object], key_id: str | None = None) -> str:
+    active_key, keys = _audit_keyring()
+    kid = key_id or active_key
+    secret = keys.get(kid, keys[active_key])
     body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hmac.new(_token_secret().encode("utf-8"), body, hashlib.sha256).hexdigest()
+    return hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
 
 def _tier_value_prop(tier: str) -> str:
@@ -359,6 +376,7 @@ def _persist_ledger_entry(receipt: TrustReceiptResponse, tier: str) -> None:
                 run_id=receipt.run_id,
                 receipt_json=entry_body,
                 receipt_signature=receipt.integrity_signature,
+                signature_key_id=receipt.signature_key_id,
                 tier=tier,
                 value_proposition=_tier_value_prop(tier),
                 badge_hash=_badge_hash_for_receipt(receipt),
@@ -781,8 +799,9 @@ def create_app() -> FastAPI:
             "M": response.M,
             "stability_timeline": timeline,
         }
-        signature = _trust_receipt_signature(receipt_payload)
-        receipt = TrustReceiptResponse(**receipt_payload, integrity_signature=signature)
+        active_key, _ = _audit_keyring()
+        signature = _trust_receipt_signature(receipt_payload, active_key)
+        receipt = TrustReceiptResponse(**receipt_payload, integrity_signature=signature, signature_key_id=active_key)
         app.state.trust_receipts[run_id] = receipt.dict()
         tier = _get_plan(request)
         background_tasks.add_task(_persist_ledger_entry, receipt, tier)
@@ -810,6 +829,7 @@ def create_app() -> FastAPI:
             "tier": row.tier,
             "value_proposition": row.value_proposition,
             "receipt_signature": row.receipt_signature,
+            "signature_key_id": row.signature_key_id,
             "badge_hash": badge_hash,
             "generated_at": receipt.generated_at,
             "ledger_chain_hash": row.chain_hash,
@@ -847,8 +867,9 @@ def create_app() -> FastAPI:
     def verify_trust_receipt(payload: TrustReceiptVerifyRequest):
         receipt = payload.receipt.dict()
         provided_signature = str(receipt.pop("integrity_signature", ""))
+        key_id = str(receipt.pop("signature_key_id", "v1"))
         receipt.pop("receipt_version", None)
-        expected_signature = _trust_receipt_signature(receipt)
+        expected_signature = _trust_receipt_signature(receipt, key_id)
         is_valid = hmac.compare_digest(expected_signature, provided_signature)
         reason = "Signature valid" if is_valid else "Signature mismatch"
         return TrustReceiptVerifyResponse(
@@ -856,6 +877,12 @@ def create_app() -> FastAPI:
             reason=reason,
             expected_signature=expected_signature,
         )
+
+    @app.get("/lex/audit/keys")
+    def audit_keys():
+        active, keys = _audit_keyring()
+        fingerprints = {kid: _sha256_text(secret)[:16] for kid, secret in keys.items()}
+        return {"active_key_id": active, "available_key_ids": sorted(keys.keys()), "fingerprints": fingerprints}
 
 
     @app.post("/lex/sales-bridge", response_model=SalesBridgeResponse)
