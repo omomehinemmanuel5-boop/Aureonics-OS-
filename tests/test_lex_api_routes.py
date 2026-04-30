@@ -1,6 +1,9 @@
+import uuid
 from fastapi.testclient import TestClient
 
 from app.main import app, create_app
+from app.database import SessionLocal
+from app.models.entities import AuditLedgerEntry, UsageLog
 
 
 client = TestClient(app)
@@ -29,7 +32,8 @@ def test_lex_run_contract_shape():
 def test_health_pricing_demo_and_checkout_stub():
     health_resp = client.get("/health")
     pricing_resp = client.get("/pricing")
-    demo_resp = client.get("/demo")
+    demo_identity = f"198.51.100.{uuid.uuid4().int % 200 + 1}"
+    demo_resp = client.get("/demo", headers={"x-forwarded-for": demo_identity, "x-subscription-plan": "enterprise"})
     checkout_resp = client.post(
         "/billing/checkout",
         json={
@@ -57,7 +61,11 @@ def test_health_pricing_demo_and_checkout_stub():
 
 
 def test_free_plan_daily_limit_and_upgrade_signal():
-    headers = {"x-forwarded-for": "203.0.113.101"}
+    identity = f"203.0.113.{uuid.uuid4().int % 200 + 1}"
+    headers = {"x-forwarded-for": identity}
+    with SessionLocal() as db:
+        db.query(UsageLog).filter(UsageLog.user_id == identity).delete()
+        db.commit()
     for _ in range(10):
         ok = client.post("/lex/run", headers=headers, json={"prompt": "Summarize contract terms."})
         assert ok.status_code == 200
@@ -140,3 +148,55 @@ def test_trust_receipt_retrieval_and_signature_verification_flow():
     assert invalid_check.status_code == 200
     assert invalid_check.json()["valid"] is False
     assert invalid_check.json()["reason"] == "Signature mismatch"
+
+
+def test_sales_bridge_stability_bounds_and_sovereignty_badge():
+    run_headers = {"x-forwarded-for": f"198.51.100.{uuid.uuid4().int % 200 + 1}"}
+    run_headers["x-subscription-plan"] = "enterprise"
+    run_resp = client.post("/lex/run", headers=run_headers, json={"prompt": "Draft lawful procurement response."})
+    assert run_resp.status_code == 200
+    run = run_resp.json()
+
+    receipt_resp = client.post(
+        "/lex/trust-receipt",
+        json={"prompt": "Draft lawful procurement response.", "response": run, "run_id": "run_audit_001"},
+    )
+    assert receipt_resp.status_code == 200
+
+    sales = client.post(
+        "/lex/sales-bridge",
+        json={"run_id": "run_audit_001", "company_name": "Acme Bank", "buyer_role": "Chief Risk Officer"},
+    )
+    assert sales.status_code == 200
+    sales_body = sales.json()
+    assert sales_body["risk_band"] in {"green", "amber", "red"}
+    assert sales_body["recommended_plan"] in {"pro", "enterprise"}
+    assert sales_body["confidence_score"] >= 0
+
+    bounds = client.get("/lex/stability-bounds")
+    assert bounds.status_code == 200
+    bounds_body = bounds.json()
+    assert bounds_body["window_size"] >= 1
+    assert 0 <= bounds_body["lower_bound"] <= 1
+
+    badge = client.get("/lex/trust-receipt/run_audit_001/badge")
+    assert badge.status_code == 200
+    badge_body = badge.json()
+    assert "<svg" in badge_body["badge_svg"]
+    assert badge_body["run_id"] == "run_audit_001"
+
+    export = client.get("/lex/trust-receipt/run_audit_001/export")
+    assert export.status_code == 200
+    export_body = export.json()
+    assert export_body["signed_export"]["badge_hash"] == export_body["badge_hash"]
+    assert len(export_body["export_hash"]) == 64
+
+    with SessionLocal() as db:
+        row = db.get(AuditLedgerEntry, "run_audit_001")
+        assert row is not None
+        row.tier = "tamper-attempt"
+        try:
+            db.commit()
+            assert False, "commit should fail for immutable audit ledger"
+        except Exception:
+            db.rollback()
