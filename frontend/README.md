@@ -34,3 +34,13 @@ npm run dev
 ## Troubleshooting
 - If the **FINAL SOVEREIGN OUTPUT** panel appears blank, the UI now auto-falls back to `governed_output` and then `raw_output`.
 - If runs are not executing, verify backend is reachable at `NEXT_PUBLIC_LEX_API_BASE_URL` and that `POST /lex/run` returns JSON.
+
+## Landing page conversion architecture (2026-04-29)
+
+The `/` page now serves as a governance-first SaaS funnel:
+- **Hero:** value proposition + live simplex/governor simulation.
+- **How it Works:** 3-step narrative for buyers (measure, intervene, prove).
+- **Proof section:** governance and enterprise-readiness evidence points.
+- **Pricing:** direct transition to `/app`, `/pricing`, and `/enterprise` for early sales conversion.
+
+All runtime simplex math for the animated widget is centralized in `lib/simplex.ts` and covered by `tests/simplex.test.ts`.

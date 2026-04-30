@@ -2,35 +2,58 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ExternalLink, Play } from 'lucide-react';
+import { CheckCircle2, ExternalLink, Play } from 'lucide-react';
 import { computePoint, GOVERNOR_THRESHOLD, nextDriftState, stabilityMargin } from '../lib/simplex';
+
+const plans = [
+  {
+    name: 'Developer',
+    price: 'Free',
+    desc: 'Perfect for evaluation and local prototypes.',
+    points: ['100 governed calls/day', 'Basic audit logs', 'API docs + sandbox'],
+    cta: { label: 'Start Free', href: '/app' },
+    featured: false
+  },
+  {
+    name: 'Team',
+    price: '$499/mo',
+    desc: 'For production workloads that need observability and governance proof.',
+    points: ['10,000 governed calls/month', 'Full session history + intervention traces', 'Priority support + onboarding'],
+    cta: { label: 'Start Trial', href: '/pricing' },
+    featured: true
+  },
+  {
+    name: 'Enterprise',
+    price: 'Custom',
+    desc: 'For compliance-heavy and mission-critical deployments.',
+    points: ['Unlimited governed calls', 'SLA + dedicated governance architect', 'Custom compliance artifacts'],
+    cta: { label: 'Book Enterprise Call', href: '/enterprise' },
+    featured: false
+  }
+] as const;
 
 export default function AureonicsLanding() {
   const [simplex, setSimplex] = useState({ c: 0.33, r: 0.33, s: 0.34 });
   const [margin, setMargin] = useState(0.33);
   const [govActive, setGovActive] = useState(false);
-
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     let drift = 0;
     let driftDir = 0.01;
-
     const interval = setInterval(() => {
       const next = nextDriftState(drift, driftDir);
       drift = next.drift;
       driftDir = next.driftDir;
-
       const point = computePoint(drift);
       const m = stabilityMargin(point);
-
       setSimplex(point);
       setMargin(m);
 
       if (m < GOVERNOR_THRESHOLD) {
         setGovActive(true);
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        timeoutRef.current = setTimeout(() => setGovActive(false), 1000);
+        timeoutRef.current = setTimeout(() => setGovActive(false), 1200);
       }
     }, 1500);
 
@@ -41,101 +64,122 @@ export default function AureonicsLanding() {
   }, []);
 
   return (
-    <div className="min-h-screen overflow-hidden bg-slate-950 text-white">
-      <div className="fixed inset-0 opacity-20">
-        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/20 via-transparent to-purple-500/20" />
-        <div className="absolute left-1/4 top-0 h-96 w-96 animate-pulse rounded-full bg-cyan-500/10 blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 h-96 w-96 animate-pulse rounded-full bg-purple-500/10 blur-3xl [animation-delay:1s]" />
-      </div>
+    <main className="min-h-screen bg-slate-950 text-white">
+      <div className="fixed inset-0 -z-10 bg-[radial-gradient(circle_at_20%_20%,rgba(34,211,238,0.14),transparent_35%),radial-gradient(circle_at_80%_20%,rgba(168,85,247,0.12),transparent_35%),radial-gradient(circle_at_50%_70%,rgba(56,189,248,0.10),transparent_45%)]" />
 
-      <nav className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950/80 backdrop-blur-sm">
+      <header className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/85 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-gradient-to-br from-cyan-400 to-purple-600 text-sm font-bold">AO</div>
-            <span className="text-xl font-bold tracking-tight">Aureonics OS</span>
+            <div className="grid h-8 w-8 place-items-center rounded bg-gradient-to-br from-cyan-400 to-purple-600 text-sm font-bold">AO</div>
+            <span className="text-lg font-semibold tracking-wide">Aureonics OS</span>
           </div>
-          <div className="flex items-center gap-4 text-sm sm:gap-6">
-            <a href="#research" className="text-slate-300 transition hover:text-white">Research</a>
-            <a href="#product" className="text-slate-300 transition hover:text-white">Product</a>
-            <a href="#pricing" className="text-slate-300 transition hover:text-white">Pricing</a>
-            <a aria-label="Aureonics GitHub repository" href="https://github.com/omomehinemmanuel5-boop/Aureonics-OS-" target="_blank" rel="noopener noreferrer" className="text-slate-400 transition hover:text-cyan-400">
-              <span aria-hidden="true">↗</span>
-            </a>
-          </div>
+          <nav className="hidden items-center gap-6 text-sm text-slate-300 md:flex">
+            <a href="#how" className="hover:text-cyan-300">How it Works</a>
+            <a href="#proof" className="hover:text-cyan-300">Proof</a>
+            <a href="#pricing" className="hover:text-cyan-300">Pricing</a>
+          </nav>
+          <Link href="/app" className="rounded bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-cyan-300">Open Console</Link>
         </div>
-      </nav>
+      </header>
 
-      <section className="relative z-10 mx-auto grid max-w-7xl grid-cols-1 items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:gap-16 lg:py-24">
+      <section className="mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:items-center lg:py-24">
         <div>
-          <div className="mb-6 inline-block rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 font-mono text-sm text-cyan-300">Constitutional AI Runtime</div>
-          <h1 className="mb-6 text-4xl font-bold leading-tight sm:text-5xl lg:text-6xl">
-            AI that <span className="bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">reasons,</span> checks itself, then ships.
+          <p className="mb-4 inline-flex rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-xs font-mono text-cyan-300">Constitutional AI Governance Runtime</p>
+          <h1 className="text-4xl font-bold leading-tight sm:text-5xl lg:text-6xl">
+            Ship governed AI your buyers can <span className="bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">verify</span>.
           </h1>
-          <p className="mb-8 text-lg leading-relaxed text-slate-300 sm:text-xl">Every request measured across three constitutional dimensions. When the system drifts, the governor intervenes before users see instability.</p>
-          <div className="flex flex-wrap gap-4">
-            <Link href="/app" className="flex items-center gap-2 rounded bg-gradient-to-r from-cyan-500 to-purple-600 px-6 py-3 font-semibold transition hover:scale-105 hover:shadow-lg hover:shadow-cyan-500/50">
-              <Play size={18} /> Launch Console
-            </Link>
-            <a href="/research" className="flex items-center gap-2 rounded border border-slate-600 px-6 py-3 font-semibold transition hover:border-cyan-500 hover:text-cyan-400">
-              Read the Paper <ExternalLink size={18} />
-            </a>
+          <p className="mt-6 max-w-2xl text-lg text-slate-300">Aureonics scores every response across Continuity, Reciprocity, and Sovereignty. If the stability margin drops below threshold, the governor intervenes before failure reaches production users.</p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link href="/demo" className="inline-flex items-center gap-2 rounded bg-gradient-to-r from-cyan-500 to-purple-600 px-5 py-3 font-semibold hover:opacity-95"><Play size={18} /> Run Live Demo</Link>
+            <a href="#pricing" className="inline-flex items-center gap-2 rounded border border-slate-600 px-5 py-3 font-semibold hover:border-cyan-400 hover:text-cyan-300">See Pricing <ExternalLink size={16} /></a>
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-8 backdrop-blur">
-          <div className="flex flex-col gap-6">
-            <svg viewBox="0 0 300 260" className="h-64 w-full">
-              <polygon points="150,20 270,240 30,240" fill="none" stroke="rgb(100,116,139)" strokeWidth="2" />
-              <polygon points="150,75 230,215 70,215" fill="rgba(34, 197, 94, 0.05)" stroke="rgb(34, 197, 94)" strokeWidth="1.5" strokeDasharray="4,4" />
-              <circle cx={150 + (simplex.r - simplex.s) * 60} cy={20 + (1 - simplex.c) * 200} r="6" fill={govActive ? 'rgb(239, 68, 68)' : 'rgb(6, 182, 212)'} className={govActive ? 'animate-pulse' : ''} />
-              {govActive && <line x1={150 + (simplex.r - simplex.s) * 60} y1={20 + (1 - simplex.c) * 200} x2="150" y2="130" stroke="rgb(239, 68, 68)" strokeWidth="2" strokeDasharray="4,4" opacity="0.6" />}
-              <text x="150" y="15" textAnchor="middle" className="fill-cyan-400 text-xs" fontSize="12" fontWeight="bold">CONTINUITY</text>
-              <text x="275" y="250" textAnchor="start" className="fill-purple-400 text-xs" fontSize="12" fontWeight="bold">SOVEREIGNTY</text>
-              <text x="10" y="250" textAnchor="end" className="fill-pink-400 text-xs" fontSize="12" fontWeight="bold">RECIPROCITY</text>
-            </svg>
+        <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+          <p className="mb-4 text-xs uppercase tracking-[0.2em] text-slate-400">Live governance state</p>
+          <svg viewBox="0 0 300 260" className="h-64 w-full">
+            <polygon points="150,20 270,240 30,240" fill="none" stroke="rgb(100,116,139)" strokeWidth="2" />
+            <polygon points="150,75 230,215 70,215" fill="rgba(34, 197, 94, 0.05)" stroke="rgb(34, 197, 94)" strokeWidth="1.5" strokeDasharray="4,4" />
+            <circle cx={150 + (simplex.r - simplex.s) * 60} cy={20 + (1 - simplex.c) * 200} r="7" fill={govActive ? 'rgb(239,68,68)' : 'rgb(6,182,212)'} className={govActive ? 'animate-pulse' : ''} />
+          </svg>
+          <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+            <MetricChip label="C" value={simplex.c} color="text-cyan-300 border-cyan-500/30" />
+            <MetricChip label="R" value={simplex.r} color="text-pink-300 border-pink-500/30" />
+            <MetricChip label="S" value={simplex.s} color="text-purple-300 border-purple-500/30" />
+          </div>
+          <div className="mt-4 rounded border border-slate-700 p-3">
+            <div className="mb-2 flex justify-between text-xs font-mono"><span>Stability Margin M(t)</span><span className={margin > GOVERNOR_THRESHOLD ? 'text-green-400' : 'text-red-400'}>{margin.toFixed(3)}</span></div>
+            <div className="h-2 overflow-hidden rounded bg-slate-800"><div className={`h-full ${margin > GOVERNOR_THRESHOLD ? 'bg-green-500' : 'bg-red-500'}`} style={{ width: `${Math.max(0.05, margin) * 100}%` }} /></div>
+            <p className="mt-2 text-xs text-slate-400">Governor trigger τ = {GOVERNOR_THRESHOLD.toFixed(2)}</p>
+          </div>
+        </div>
+      </section>
 
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              {([
-                { label: 'C', value: simplex.c, box: 'border-cyan-500/30', text: 'text-cyan-400' },
-                { label: 'R', value: simplex.r, box: 'border-pink-500/30', text: 'text-pink-400' },
-                { label: 'S', value: simplex.s, box: 'border-purple-500/30', text: 'text-purple-400' }
-              ] as const).map((item) => (
-                <div key={item.label} className={`rounded border ${item.box} bg-slate-800/50 p-3`}>
-                  <div className={`font-mono text-xs ${item.text}`}>{item.label}</div>
-                  <div className="text-lg font-bold">{(item.value * 100).toFixed(0)}%</div>
-                </div>
+      <section id="how" className="mx-auto max-w-7xl border-t border-slate-800 px-4 py-16 sm:px-6">
+        <h2 className="text-3xl font-bold">How this becomes an early-sale SaaS</h2>
+        <div className="mt-8 grid gap-4 md:grid-cols-3">
+          {[
+            ['Measure', 'Every output is scored in C/R/S and assigned a margin before release.'],
+            ['Intervene', 'Low-margin generations get corrected with explicit governor traces.'],
+            ['Prove', 'Audit logs and intervention artifacts become customer trust evidence.']
+          ].map(([title, body]) => (
+            <article key={title} className="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+              <h3 className="font-semibold text-cyan-300">{title}</h3>
+              <p className="mt-2 text-sm text-slate-300">{body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section id="proof" className="mx-auto max-w-7xl border-t border-slate-800 px-4 py-16 sm:px-6">
+        <h2 className="text-3xl font-bold">Proof that closes deals</h2>
+        <div className="mt-6 grid gap-6 md:grid-cols-2">
+          <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-6">
+            <h3 className="font-semibold">Governance Console</h3>
+            <ul className="mt-4 space-y-3 text-sm text-slate-300">
+              {['Real-time M(t) tracking', 'Intervention timeline + rationale', 'Session-level constitutional profile'].map((item) => (
+                <li key={item} className="flex items-start gap-2"><CheckCircle2 size={16} className="mt-0.5 text-green-400" />{item}</li>
               ))}
-            </div>
-
-            <div className="border-t border-slate-700 pt-4">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="font-mono text-xs text-slate-400">Stability Margin M(t)</span>
-                <span className={`font-mono text-sm font-bold ${margin > GOVERNOR_THRESHOLD ? 'text-green-400' : 'text-red-400'}`}>{margin.toFixed(3)}</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded bg-slate-800">
-                <div className={`h-full transition-all duration-300 ${margin > GOVERNOR_THRESHOLD ? 'bg-green-500' : 'bg-red-500'}`} style={{ width: `${Math.max(margin, 0.05) * 100}%` }} />
-              </div>
-              <div className="mt-2 text-xs text-slate-400">τ = 0.15 (Constitutional threshold)</div>
-            </div>
+            </ul>
+          </div>
+          <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-6">
+            <h3 className="font-semibold">Enterprise Readiness</h3>
+            <ul className="mt-4 space-y-3 text-sm text-slate-300">
+              {['Exportable compliance artifacts', 'Buyer-ready architecture + risk narrative', 'Audit-first deployment posture'].map((item) => (
+                <li key={item} className="flex items-start gap-2"><CheckCircle2 size={16} className="mt-0.5 text-green-400" />{item}</li>
+              ))}
+            </ul>
           </div>
         </div>
       </section>
 
-      <section id="research" className="relative z-10 mx-auto max-w-7xl border-t border-slate-800 px-4 py-16 sm:px-6 lg:py-24">
-        <h2 className="mb-4 text-4xl font-bold">The Framework</h2>
-        <p className="mb-16 text-lg text-slate-400">Aureonics is not a brand term. It&apos;s a measurable, geometric model of adaptive stability.</p>
-      </section>
-
-      <footer className="relative z-10 border-t border-slate-800 px-6 py-12">
-        <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-4 text-sm text-slate-400 sm:flex-row sm:items-center">
-          <div>© 2026 Aureonics. Measurable. Constitutional. Governed.</div>
-          <div className="flex gap-6">
-            <a href="/docs" className="transition hover:text-cyan-400">Docs</a>
-            <a href="/pricing" className="transition hover:text-cyan-400">Pricing</a>
-            <a href="https://github.com/omomehinemmanuel5-boop/Aureonics-OS-" className="flex items-center gap-1 transition hover:text-cyan-400">GitHub</a>
-          </div>
+      <section id="pricing" className="mx-auto max-w-7xl border-t border-slate-800 px-4 py-16 sm:px-6">
+        <h2 className="text-3xl font-bold">Pricing built for first revenue</h2>
+        <div className="mt-8 grid gap-4 lg:grid-cols-3">
+          {plans.map((plan) => (
+            <article key={plan.name} className={`rounded-xl border p-6 ${plan.featured ? 'border-cyan-500/60 bg-slate-900' : 'border-slate-800 bg-slate-900/40'}`}>
+              <h3 className="text-xl font-semibold">{plan.name}</h3>
+              <p className="mt-2 text-3xl font-bold">{plan.price}</p>
+              <p className="mt-2 text-sm text-slate-400">{plan.desc}</p>
+              <ul className="mt-5 space-y-2 text-sm text-slate-300">
+                {plan.points.map((point) => <li key={point} className="flex gap-2"><CheckCircle2 size={16} className="text-green-400" />{point}</li>)}
+              </ul>
+              <Link href={plan.cta.href} className={`mt-6 inline-block w-full rounded px-4 py-2 text-center font-semibold ${plan.featured ? 'bg-gradient-to-r from-cyan-500 to-purple-600' : 'border border-slate-600 hover:border-cyan-500'}`}>
+                {plan.cta.label}
+              </Link>
+            </article>
+          ))}
         </div>
-      </footer>
+      </section>
+    </main>
+  );
+}
+
+function MetricChip({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className={`rounded border bg-slate-800/60 p-3 ${color}`}>
+      <p className="font-mono text-xs">{label}</p>
+      <p className="text-lg font-bold text-white">{(value * 100).toFixed(0)}%</p>
     </div>
   );
 }
