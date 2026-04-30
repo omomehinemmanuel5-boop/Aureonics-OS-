@@ -105,6 +105,8 @@ class AuditLedgerEntry(Base):
     tier: Mapped[str] = mapped_column(String(24), nullable=False, default="free")
     value_proposition: Mapped[str] = mapped_column(Text, nullable=False)
     badge_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    previous_chain_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="0" * 64)
+    chain_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
 
 

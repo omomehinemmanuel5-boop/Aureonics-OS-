@@ -25,6 +25,7 @@ This creates a concrete “before/after” demo that buyers understand in minute
 - **Dynamic stability bounds**: `GET /lex/stability-bounds`
 - **Proof-of-sovereignty badge**: `GET /lex/trust-receipt/{run_id}/badge`
 - **Signed export bundle**: `GET /lex/trust-receipt/{run_id}/export`
+- **Ledger chain verification**: `GET /lex/audit-ledger/verify`
 - **Operational endpoints**: `GET /health`, `GET /pricing`, `GET /demo`
 - **Auth endpoints**: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
 - **Stripe-ready stub**: `POST /billing/checkout` (auth required)

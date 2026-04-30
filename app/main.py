@@ -10,6 +10,7 @@ import os
 import secrets
 from difflib import SequenceMatcher
 from typing import Literal
+from sqlalchemy import desc
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -124,6 +125,7 @@ class TrustReceiptExportResponse(BaseModel):
     receipt: TrustReceiptResponse
     badge_hash: str
     export_hash: str
+    ledger_chain_hash: str
     signed_export: dict[str, object]
 
 
@@ -348,14 +350,20 @@ def _persist_ledger_entry(receipt: TrustReceiptResponse, tier: str) -> None:
         existing = db.get(AuditLedgerEntry, receipt.run_id)
         if existing is not None:
             return
+        last_entry = db.query(AuditLedgerEntry).order_by(desc(AuditLedgerEntry.created_at)).first()
+        previous_chain_hash = last_entry.chain_hash if last_entry is not None else "0" * 64
+        entry_body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        chain_hash = _sha256_text(f"{previous_chain_hash}|{receipt.integrity_signature}|{entry_body}")
         db.add(
             AuditLedgerEntry(
                 run_id=receipt.run_id,
-                receipt_json=json.dumps(payload, sort_keys=True, separators=(",", ":")),
+                receipt_json=entry_body,
                 receipt_signature=receipt.integrity_signature,
                 tier=tier,
                 value_proposition=_tier_value_prop(tier),
                 badge_hash=_badge_hash_for_receipt(receipt),
+                previous_chain_hash=previous_chain_hash,
+                chain_hash=chain_hash,
             )
         )
         db.commit()
@@ -804,6 +812,7 @@ def create_app() -> FastAPI:
             "receipt_signature": row.receipt_signature,
             "badge_hash": badge_hash,
             "generated_at": receipt.generated_at,
+            "ledger_chain_hash": row.chain_hash,
         }
         export_hash = _trust_receipt_signature(signed_export)
         return TrustReceiptExportResponse(
@@ -811,8 +820,28 @@ def create_app() -> FastAPI:
             receipt=receipt,
             badge_hash=badge_hash,
             export_hash=export_hash,
+            ledger_chain_hash=row.chain_hash,
             signed_export=signed_export,
         )
+
+    @app.get("/lex/audit-ledger/verify")
+    def verify_audit_chain(limit: int = 100):
+        with SessionLocal() as db:
+            entries = (
+                db.query(AuditLedgerEntry)
+                .order_by(AuditLedgerEntry.created_at.asc())
+                .limit(max(1, min(limit, 5000)))
+                .all()
+            )
+        if not entries:
+            return {"valid": True, "checked": 0, "reason": "No ledger entries yet"}
+        prev = "0" * 64
+        for idx, entry in enumerate(entries):
+            expected = _sha256_text(f"{prev}|{entry.receipt_signature}|{entry.receipt_json}")
+            if entry.previous_chain_hash != prev or entry.chain_hash != expected:
+                return {"valid": False, "checked": idx + 1, "reason": f"Chain mismatch at run_id={entry.run_id}"}
+            prev = entry.chain_hash
+        return {"valid": True, "checked": len(entries), "last_chain_hash": prev}
 
     @app.post("/lex/trust-receipt/verify", response_model=TrustReceiptVerifyResponse)
     def verify_trust_receipt(payload: TrustReceiptVerifyRequest):

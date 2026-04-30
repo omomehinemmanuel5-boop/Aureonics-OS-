@@ -190,6 +190,11 @@ def test_sales_bridge_stability_bounds_and_sovereignty_badge():
     export_body = export.json()
     assert export_body["signed_export"]["badge_hash"] == export_body["badge_hash"]
     assert len(export_body["export_hash"]) == 64
+    assert len(export_body["ledger_chain_hash"]) == 64
+
+    chain = client.get("/lex/audit-ledger/verify")
+    assert chain.status_code == 200
+    assert chain.json()["valid"] is True
 
     with SessionLocal() as db:
         row = db.get(AuditLedgerEntry, "run_audit_001")
