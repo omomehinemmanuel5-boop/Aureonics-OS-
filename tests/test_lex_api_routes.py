@@ -19,8 +19,11 @@ def test_lex_run_contract_shape():
         "intervention_reason",
         "semantic_diff_score",
         "M",
+        "diff",
     }
     assert expected.issubset(data.keys())
+    assert isinstance(data["diff"], list)
+    assert all({"type", "text"}.issubset(chunk.keys()) for chunk in data["diff"])
 
 
 def test_health_pricing_demo_and_checkout_stub():
@@ -40,7 +43,7 @@ def test_health_pricing_demo_and_checkout_stub():
     assert health_resp.status_code == 200
     assert pricing_resp.status_code == 200
     assert demo_resp.status_code == 200
-    assert checkout_resp.status_code == 401
+    assert checkout_resp.status_code == 200
 
     pricing = pricing_resp.json()
     assert pricing.get("product")
@@ -50,7 +53,7 @@ def test_health_pricing_demo_and_checkout_stub():
     assert demo["intervention"] is True
 
     checkout = checkout_resp.json()
-    assert checkout["detail"] == "Authentication required"
+    assert checkout["checkout_mode"] == "manual_invoice"
 
 
 def test_free_plan_daily_limit_and_upgrade_signal():

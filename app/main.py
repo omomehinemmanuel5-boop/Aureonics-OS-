@@ -60,29 +60,31 @@ class DecisionResponse(BaseModel):
 
 
 def compute_diff(raw_output: str, governed_output: str) -> list[DiffChunk]:
+    raw_words = raw_output.split()
+    governed_words = governed_output.split()
     chunks: list[DiffChunk] = []
-    matcher = SequenceMatcher(None, raw_output.split(), governed_output.split())
+    matcher = SequenceMatcher(None, raw_words, governed_words)
 
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
         if tag == "equal":
-            text = " ".join(raw_output.split()[i1:i2])
+            text = " ".join(raw_words[i1:i2])
             if text:
                 chunks.append(DiffChunk(type="unchanged", text=text))
         elif tag == "delete":
-            text = " ".join(raw_output.split()[i1:i2])
+            text = " ".join(raw_words[i1:i2])
             if text:
                 chunks.append(DiffChunk(type="removed", text=text))
         elif tag == "insert":
-            text = " ".join(governed_output.split()[j1:j2])
+            text = " ".join(governed_words[j1:j2])
             if text:
                 chunks.append(DiffChunk(type="added", text=text))
         elif tag == "replace":
-            removed = " ".join(raw_output.split()[i1:i2])
-            added = " ".join(governed_output.split()[j1:j2])
+            removed = " ".join(raw_words[i1:i2])
+            added = " ".join(governed_words[j1:j2])
             if removed:
-                chunks.append({"type": "removed", "text": removed})
+                chunks.append(DiffChunk(type="removed", text=removed))
             if added:
-                chunks.append({"type": "added", "text": added})
+                chunks.append(DiffChunk(type="added", text=added))
 
     return chunks
 class RegisterRequest(BaseModel):
