@@ -1,6 +1,6 @@
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, event
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -94,3 +94,27 @@ class UsageLog(Base):
         default=lambda: datetime.now(timezone.utc),
         index=True,
     )
+
+
+class AuditLedgerEntry(Base):
+    __tablename__ = "audit_ledger_entries"
+
+    run_id: Mapped[str] = mapped_column(String, primary_key=True)
+    receipt_json: Mapped[str] = mapped_column(Text, nullable=False)
+    receipt_signature: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    tier: Mapped[str] = mapped_column(String(24), nullable=False, default="free")
+    value_proposition: Mapped[str] = mapped_column(Text, nullable=False)
+    badge_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    previous_chain_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="0" * 64)
+    chain_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+@event.listens_for(AuditLedgerEntry, "before_update", propagate=True)
+def _immutable_ledger_update(*_args, **_kwargs):
+    raise ValueError("Audit ledger is immutable: updates are not allowed.")
+
+
+@event.listens_for(AuditLedgerEntry, "before_delete", propagate=True)
+def _immutable_ledger_delete(*_args, **_kwargs):
+    raise ValueError("Audit ledger is immutable: deletes are not allowed.")
