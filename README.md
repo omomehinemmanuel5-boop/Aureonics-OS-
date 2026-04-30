@@ -18,6 +18,9 @@ This creates a concrete “before/after” demo that buyers understand in minute
 - **Landing page**: `/` (marketing only)
 - **Dashboard**: `/dashboard` (minimal SaaS runner)
 - **Core API endpoint**: `POST /lex/run`
+- **Trust receipt export**: `POST /lex/trust-receipt`
+- **Trust receipt retrieval**: `GET /lex/trust-receipt/{run_id}`
+- **Trust receipt verification**: `POST /lex/trust-receipt/verify`
 - **Operational endpoints**: `GET /health`, `GET /pricing`, `GET /demo`
 - **Auth endpoints**: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
 - **Stripe-ready stub**: `POST /billing/checkout` (auth required)
@@ -35,6 +38,25 @@ This creates a concrete “before/after” demo that buyers understand in minute
   "M": 0.0
 }
 ```
+
+## Trust Receipt Export (`POST /lex/trust-receipt`)
+
+Generate an auditable trust receipt from a completed governed run. The receipt includes:
+
+- Input/output SHA-256 hashes (`input_hash`, `raw_output_hash`, `governed_output_hash`, `final_output_hash`)
+- Governance outcomes (`intervention`, `intervention_reason`, `semantic_diff_score`, `M`)
+- Stability timeline (`raw` → `governed` → `final`)
+- Integrity HMAC signature (`integrity_signature`) for tamper detection
+
+Use this endpoint to produce buyer-facing trust artifacts for compliance and procurement review.
+
+### Trust Receipt Operations
+
+After generating a receipt, you can:
+- Retrieve by run id: `GET /lex/trust-receipt/{run_id}`
+- Verify tamper integrity: `POST /lex/trust-receipt/verify` with the receipt payload
+
+Verification recomputes the expected HMAC signature from the canonical receipt payload and compares it against `integrity_signature`.
 
 Frontend displays only:
 - `final_output` (primary)
@@ -113,6 +135,20 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 Open:
 - Landing: `http://127.0.0.1:8000/`
 - Dashboard: `http://127.0.0.1:8000/dashboard`
+
+### Frontend routing mode (important)
+
+If you deployed the new Next.js frontend separately (e.g., Vercel) but still hit the legacy static pages, set:
+
+```bash
+LEX_FRONTEND_BASE_URL=https://your-frontend-domain.com
+```
+
+When set, backend routes redirect as follows:
+- `/` → `https://your-frontend-domain.com/`
+- `/dashboard` → `https://your-frontend-domain.com/app`
+
+Without this variable, the backend intentionally serves the legacy static HTML pages from `app/static/*`.
 
 ---
 

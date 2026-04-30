@@ -13,7 +13,7 @@ from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -57,6 +57,36 @@ class DecisionResponse(BaseModel):
     diff: list[DiffChunk] = []
 
 
+class TrustReceiptRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=8000)
+    response: DecisionResponse
+    run_id: str | None = Field(default=None, min_length=3, max_length=128)
+
+
+class TrustReceiptResponse(BaseModel):
+    run_id: str
+    generated_at: str
+    input_hash: str
+    raw_output_hash: str
+    governed_output_hash: str
+    final_output_hash: str
+    intervention: bool
+    intervention_reason: str
+    semantic_diff_score: float
+    M: float
+    stability_timeline: list[dict[str, float | str]]
+    integrity_signature: str
+    receipt_version: Literal["1.0"] = "1.0"
+
+
+class TrustReceiptVerifyRequest(BaseModel):
+    receipt: TrustReceiptResponse
+
+
+class TrustReceiptVerifyResponse(BaseModel):
+    valid: bool
+    reason: str
+    expected_signature: str
 
 
 def compute_diff(raw_output: str, governed_output: str) -> list[DiffChunk]:
@@ -142,6 +172,11 @@ def _token_secret() -> str:
     return os.getenv("LEX_AUTH_SECRET", "lex-dev-secret-change-me")
 
 
+def _frontend_base_url() -> str | None:
+    configured = os.getenv("LEX_FRONTEND_BASE_URL", "").strip().rstrip("/")
+    return configured or None
+
+
 def _urlsafe_b64(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
@@ -214,6 +249,8 @@ def _ensure_state(app: FastAPI) -> None:
         app.state.usage_counts = {}
     if not hasattr(app.state, "users"):
         app.state.users = {}
+    if not hasattr(app.state, "trust_receipts"):
+        app.state.trust_receipts = {}
 
 
 def _get_kernel() -> SovereignKernel:
@@ -241,6 +278,15 @@ def _request_identity(request: Request) -> str:
 
 def _semantic_diff_score(a: str, b: str) -> float:
     return round(1.0 - SequenceMatcher(None, a or "", b or "").ratio(), 6)
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _trust_receipt_signature(payload: dict[str, object]) -> str:
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hmac.new(_token_secret().encode("utf-8"), body, hashlib.sha256).hexdigest()
 
 
 def _govern_text(raw: str) -> tuple[str, str]:
@@ -428,6 +474,7 @@ async def lifespan(app: FastAPI):
     app.state.startup_errors = []
     app.state.usage_counts = {}
     app.state.users = {}
+    app.state.trust_receipts = {}
 
     kernel_result = load_kernel_safely()
     app.state.kernel = kernel_result.get("kernel") or app.state.kernel
@@ -468,10 +515,16 @@ def create_app() -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def landing():
+        frontend = _frontend_base_url()
+        if frontend:
+            return RedirectResponse(url=f"{frontend}/", status_code=307)
         return FileResponse("app/static/index.html")
 
     @app.get("/dashboard", include_in_schema=False)
     def dashboard():
+        frontend = _frontend_base_url()
+        if frontend:
+            return RedirectResponse(url=f"{frontend}/app", status_code=307)
         return FileResponse("app/static/console.html")
 
     @app.get("/health")
@@ -604,6 +657,57 @@ def create_app() -> FastAPI:
                 "After payment confirmation, production plan entitlement is activated within one business day.",
             ],
             note="Manual payment mode is active. Stripe auto-checkout is intentionally disabled.",
+        )
+
+    @app.post("/lex/trust-receipt", response_model=TrustReceiptResponse)
+    def trust_receipt(payload: TrustReceiptRequest):
+        now_dt = _now()
+        run_id = payload.run_id or f"lexrun_{int(now_dt.timestamp())}_{secrets.token_hex(4)}"
+        response = payload.response
+
+        timeline = [
+            {"stage": "raw", "stability": 0.0},
+            {"stage": "governed", "stability": round(response.M, 6)},
+            {"stage": "final", "stability": round(response.M if response.intervention else 1.0, 6)},
+        ]
+        receipt_payload: dict[str, object] = {
+            "run_id": run_id,
+            "generated_at": now_dt.isoformat(),
+            "input_hash": _sha256_text(payload.prompt),
+            "raw_output_hash": _sha256_text(response.raw_output),
+            "governed_output_hash": _sha256_text(response.governed_output),
+            "final_output_hash": _sha256_text(response.final_output),
+            "intervention": response.intervention,
+            "intervention_reason": response.intervention_reason,
+            "semantic_diff_score": response.semantic_diff_score,
+            "M": response.M,
+            "stability_timeline": timeline,
+        }
+        signature = _trust_receipt_signature(receipt_payload)
+        receipt = TrustReceiptResponse(**receipt_payload, integrity_signature=signature)
+        app.state.trust_receipts[run_id] = receipt.dict()
+        return receipt
+
+    @app.get("/lex/trust-receipt/{run_id}", response_model=TrustReceiptResponse)
+    def get_trust_receipt(run_id: str):
+        _ensure_state(app)
+        found = app.state.trust_receipts.get(run_id)
+        if not found:
+            raise HTTPException(status_code=404, detail="Trust receipt not found")
+        return TrustReceiptResponse(**found)
+
+    @app.post("/lex/trust-receipt/verify", response_model=TrustReceiptVerifyResponse)
+    def verify_trust_receipt(payload: TrustReceiptVerifyRequest):
+        receipt = payload.receipt.dict()
+        provided_signature = str(receipt.pop("integrity_signature", ""))
+        receipt.pop("receipt_version", None)
+        expected_signature = _trust_receipt_signature(receipt)
+        is_valid = hmac.compare_digest(expected_signature, provided_signature)
+        reason = "Signature valid" if is_valid else "Signature mismatch"
+        return TrustReceiptVerifyResponse(
+            valid=is_valid,
+            reason=reason,
+            expected_signature=expected_signature,
         )
 
     return app

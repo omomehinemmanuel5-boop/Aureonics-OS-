@@ -3,8 +3,21 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://lex.aureonics.ai'),
   title: 'Lex Aureon — AI Trust Layer',
-  description: 'Lex intercepts, stabilizes, and improves AI responses in real-time.'
+  description: 'Lex intercepts, stabilizes, and improves AI responses in real-time.',
+  openGraph: {
+    title: 'Lex Aureon — AI Trust Layer',
+    description: 'Governed AI runtime for verifiable, enterprise-safe responses.',
+    url: 'https://lex.aureonics.ai',
+    siteName: 'Lex Aureon',
+    type: 'website'
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Lex Aureon — AI Trust Layer',
+    description: 'Governed AI runtime for verifiable, enterprise-safe responses.'
+  }
 };
 
 const navItems = [
