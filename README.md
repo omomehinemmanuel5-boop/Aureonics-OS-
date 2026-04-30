@@ -18,6 +18,7 @@ This creates a concrete “before/after” demo that buyers understand in minute
 - **Landing page**: `/` (marketing only)
 - **Dashboard**: `/dashboard` (minimal SaaS runner)
 - **Core API endpoint**: `POST /lex/run`
+- **Trust receipt export**: `POST /lex/trust-receipt`
 - **Operational endpoints**: `GET /health`, `GET /pricing`, `GET /demo`
 - **Auth endpoints**: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
 - **Stripe-ready stub**: `POST /billing/checkout` (auth required)
@@ -35,6 +36,17 @@ This creates a concrete “before/after” demo that buyers understand in minute
   "M": 0.0
 }
 ```
+
+## Trust Receipt Export (`POST /lex/trust-receipt`)
+
+Generate an auditable trust receipt from a completed governed run. The receipt includes:
+
+- Input/output SHA-256 hashes (`input_hash`, `raw_output_hash`, `governed_output_hash`, `final_output_hash`)
+- Governance outcomes (`intervention`, `intervention_reason`, `semantic_diff_score`, `M`)
+- Stability timeline (`raw` → `governed` → `final`)
+- Integrity HMAC signature (`integrity_signature`) for tamper detection
+
+Use this endpoint to produce buyer-facing trust artifacts for compliance and procurement review.
 
 Frontend displays only:
 - `final_output` (primary)
