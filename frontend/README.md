@@ -26,14 +26,15 @@ npm run dev
 - **Render**: deploy backend API from repository root (`app.main:app`).
 
 ## Environment Variables
-- `NEXT_PUBLIC_LEX_API_BASE_URL`: Backend origin for `/lex/run`
+- `NEXT_PUBLIC_LEX_API_BASE_URL`: Optional direct backend origin for `/lex/run` (when omitted, frontend calls Next API proxy at `/api/lex/run`).
+- `LEX_API_BASE_URL`: Server-only backend origin used by `/api/lex/run` route (recommended in production).
 - `SALES_CONTACT_EMAIL`: fallback contact for invoice fulfilment (optional)
 - `SALES_PHONE_E164`: WhatsApp-enabled sales phone in E.164 format (optional)
 - `MANUAL_INVOICE_TERMS_DAYS`: invoice terms in days (optional, default 7)
 
 ## Troubleshooting
 - If the **FINAL SOVEREIGN OUTPUT** panel appears blank, the UI now auto-falls back to `governed_output` and then `raw_output`.
-- If runs are not executing, verify backend is reachable at `NEXT_PUBLIC_LEX_API_BASE_URL` and that `POST /lex/run` returns JSON.
+- If runs are not executing, verify backend is reachable from the Next server via `LEX_API_BASE_URL` (or `NEXT_PUBLIC_LEX_API_BASE_URL`) and that `POST /lex/run` returns JSON.
 
 ## Website optimization defaults (enabled)
 
