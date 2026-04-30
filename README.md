@@ -144,6 +144,20 @@ Open:
 - Landing: `http://127.0.0.1:8000/`
 - Dashboard: `http://127.0.0.1:8000/dashboard`
 
+### Frontend routing mode (important)
+
+If you deployed the new Next.js frontend separately (e.g., Vercel) but still hit the legacy static pages, set:
+
+```bash
+LEX_FRONTEND_BASE_URL=https://your-frontend-domain.com
+```
+
+When set, backend routes redirect as follows:
+- `/` → `https://your-frontend-domain.com/`
+- `/dashboard` → `https://your-frontend-domain.com/app`
+
+Without this variable, the backend intentionally serves the legacy static HTML pages from `app/static/*`.
+
 ---
 
 ## Internal Research Notes

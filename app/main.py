@@ -163,6 +163,11 @@ def _token_secret() -> str:
     return os.getenv("LEX_AUTH_SECRET", "lex-dev-secret-change-me")
 
 
+def _frontend_base_url() -> str | None:
+    configured = os.getenv("LEX_FRONTEND_BASE_URL", "").strip().rstrip("/")
+    return configured or None
+
+
 def _urlsafe_b64(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
