@@ -18,6 +18,7 @@ This creates a concrete “before/after” demo that buyers understand in minute
 - **Landing page**: `/` (marketing only)
 - **Dashboard**: `/dashboard` (minimal SaaS runner)
 - **Core API endpoint**: `POST /lex/run`
+- **Trust receipt export**: `POST /lex/trust-receipt`
 - **Operational endpoints**: `GET /health`, `GET /pricing`, `GET /demo`
 - **Auth endpoints**: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
 - **Stripe-ready stub**: `POST /billing/checkout` (auth required)
@@ -35,6 +36,17 @@ This creates a concrete “before/after” demo that buyers understand in minute
   "M": 0.0
 }
 ```
+
+## Trust Receipt Export (`POST /lex/trust-receipt`)
+
+Generate an auditable trust receipt from a completed governed run. The receipt includes:
+
+- Input/output SHA-256 hashes (`input_hash`, `raw_output_hash`, `governed_output_hash`, `final_output_hash`)
+- Governance outcomes (`intervention`, `intervention_reason`, `semantic_diff_score`, `M`)
+- Stability timeline (`raw` → `governed` → `final`)
+- Integrity HMAC signature (`integrity_signature`) for tamper detection
+
+Use this endpoint to produce buyer-facing trust artifacts for compliance and procurement review.
 
 Frontend displays only:
 - `final_output` (primary)
@@ -100,6 +112,24 @@ uvicorn app.main:app --host 0.0.0.0 --port $PORT
 The app uses safe boot behavior:
 - Import-time kernel failure does **not** block startup.
 - `/health` returns `degraded: true` when bootstrap errors exist.
+
+### Frontend routing mode (important)
+
+By default, FastAPI serves the embedded frontend:
+- `GET /` → `app/static/index.html`
+- `GET /dashboard` → `app/static/console.html`
+
+If you want your deployed site to show the **Next.js frontend** instead, set:
+
+```bash
+LEX_FRONTEND_BASE_URL=https://your-nextjs-domain.com
+```
+
+Then the backend will redirect:
+- `GET /` → `https://your-nextjs-domain.com/`
+- `GET /dashboard` → `https://your-nextjs-domain.com/app`
+
+Use `GET /frontend/status` to verify which mode is active.
 
 ## Local Run
 

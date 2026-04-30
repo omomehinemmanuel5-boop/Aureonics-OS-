@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import app, create_app
 
 
 client = TestClient(app)
@@ -71,3 +71,56 @@ def test_free_plan_daily_limit_and_upgrade_signal():
     assert data["upgrade_required"] is True
     assert data["message"] == "You’ve used all 10 free runs today."
     assert data["final_output"] == ""
+
+
+def test_trust_receipt_export_contains_hashes_and_signature():
+    run_resp = client.post("/lex/run", json={"prompt": "Draft a compliant vendor onboarding checklist."})
+    assert run_resp.status_code == 200
+    run = run_resp.json()
+
+    receipt_resp = client.post(
+        "/lex/trust-receipt",
+        json={
+            "prompt": "Draft a compliant vendor onboarding checklist.",
+            "response": run,
+            "run_id": "run_demo_001",
+        },
+    )
+    assert receipt_resp.status_code == 200
+    receipt = receipt_resp.json()
+
+    assert receipt["run_id"] == "run_demo_001"
+    assert receipt["receipt_version"] == "1.0"
+    assert len(receipt["input_hash"]) == 64
+    assert len(receipt["raw_output_hash"]) == 64
+    assert len(receipt["governed_output_hash"]) == 64
+    assert len(receipt["final_output_hash"]) == 64
+    assert len(receipt["integrity_signature"]) == 64
+    assert isinstance(receipt["stability_timeline"], list)
+    assert [step["stage"] for step in receipt["stability_timeline"]] == ["raw", "governed", "final"]
+
+
+def test_frontend_status_default_mode():
+    resp = client.get("/frontend/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["mode"] == "embedded_fastapi_static"
+    assert data["frontend_base_url"] is None
+    assert data["landing_route"] == "/"
+    assert data["app_route"] == "/dashboard"
+
+
+def test_frontend_redirect_mode_when_external_frontend_configured(monkeypatch):
+    monkeypatch.setenv("LEX_FRONTEND_BASE_URL", "https://frontend.example.com")
+    redirect_app = create_app()
+    redirect_client = TestClient(redirect_app)
+
+    landing = redirect_client.get("/", follow_redirects=False)
+    dashboard = redirect_client.get("/dashboard", follow_redirects=False)
+    status = redirect_client.get("/frontend/status")
+
+    assert landing.status_code == 307
+    assert landing.headers["location"] == "https://frontend.example.com/"
+    assert dashboard.status_code == 307
+    assert dashboard.headers["location"] == "https://frontend.example.com/app"
+    assert status.json()["mode"] == "external_nextjs"
