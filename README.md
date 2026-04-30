@@ -21,6 +21,12 @@ This creates a concrete “before/after” demo that buyers understand in minute
 - **Trust receipt export**: `POST /lex/trust-receipt`
 - **Trust receipt retrieval**: `GET /lex/trust-receipt/{run_id}`
 - **Trust receipt verification**: `POST /lex/trust-receipt/verify`
+- **Autonomous Sales Bridge**: `POST /lex/sales-bridge`
+- **Dynamic stability bounds**: `GET /lex/stability-bounds`
+- **Proof-of-sovereignty badge**: `GET /lex/trust-receipt/{run_id}/badge`
+- **Signed export bundle**: `GET /lex/trust-receipt/{run_id}/export`
+- **Ledger chain verification**: `GET /lex/audit-ledger/verify`
+- **Audit key metadata**: `GET /lex/audit/keys`
 - **Operational endpoints**: `GET /health`, `GET /pricing`, `GET /demo`
 - **Auth endpoints**: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`
 - **Stripe-ready stub**: `POST /billing/checkout` (auth required)
@@ -57,6 +63,7 @@ After generating a receipt, you can:
 - Verify tamper integrity: `POST /lex/trust-receipt/verify` with the receipt payload
 
 Verification recomputes the expected HMAC signature from the canonical receipt payload and compares it against `integrity_signature`.
+Ledger persistence is write-once immutable (`audit_ledger_entries`): updates/deletes are blocked at the model event layer, and writes are queued in a background task so governed output latency stays fast.
 
 Frontend displays only:
 - `final_output` (primary)
@@ -140,6 +147,18 @@ Then the backend will redirect:
 - `GET /dashboard` → `https://your-nextjs-domain.com/app`
 
 Use `GET /frontend/status` to verify which mode is active.
+
+Quick check:
+```bash
+python scripts/check_frontend_connection.py https://your-backend-domain.com
+```
+
+
+## Deployment Readiness
+
+For a production deployment checklist and hardening sequence, see `docs/deployment_readiness_next_steps.md`.
+
+To switch website traffic to the new Next.js frontend, follow `docs/frontend_cutover_guide.md`.
 
 ## Local Run
 

@@ -10,14 +10,16 @@ import os
 import secrets
 from difflib import SequenceMatcher
 from typing import Literal
+from sqlalchemy import desc
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from app.database import Base, SessionLocal, engine
 from app.models import entities as _entities  # noqa: F401
+from app.models.entities import AuditLedgerEntry
 from app.safe_boot import load_kernel_safely
 from app.services.usage_service import get_today_usage, log_usage
 from sovereign_kernel_v2 import SovereignKernel
@@ -75,6 +77,7 @@ class TrustReceiptResponse(BaseModel):
     M: float
     stability_timeline: list[dict[str, float | str]]
     integrity_signature: str
+    signature_key_id: str = "v1"
     receipt_version: Literal["1.0"] = "1.0"
 
 
@@ -86,6 +89,44 @@ class TrustReceiptVerifyResponse(BaseModel):
     valid: bool
     reason: str
     expected_signature: str
+
+
+class SalesBridgeRequest(BaseModel):
+    run_id: str
+    company_name: str = Field(min_length=2, max_length=160)
+    buyer_role: str = Field(min_length=2, max_length=120)
+
+
+class SalesBridgeResponse(BaseModel):
+    run_id: str
+    risk_band: Literal["green", "amber", "red"]
+    recommended_plan: Literal["pro", "enterprise"]
+    next_action: str
+    controls_summary: list[str]
+    confidence_score: float
+
+
+class StabilityBoundsResponse(BaseModel):
+    lower_bound: float
+    upper_bound: float
+    window_size: int
+    intervention_rate: float
+    status: Literal["stable", "watch", "alert"]
+
+
+class SovereigntyEvidenceResponse(BaseModel):
+    run_id: str
+    badge_svg: str
+    evidence_summary: str
+
+
+class TrustReceiptExportResponse(BaseModel):
+    run_id: str
+    receipt: TrustReceiptResponse
+    badge_hash: str
+    export_hash: str
+    ledger_chain_hash: str
+    signed_export: dict[str, object]
 
 
 def compute_diff(raw_output: str, governed_output: str) -> list[DiffChunk]:
@@ -171,6 +212,19 @@ def _token_secret() -> str:
     return os.getenv("LEX_AUTH_SECRET", "lex-dev-secret-change-me")
 
 
+def _audit_keyring() -> tuple[str, dict[str, str]]:
+    active = os.getenv("LEX_AUDIT_ACTIVE_KEY_ID", "v1")
+    raw = os.getenv("LEX_AUDIT_KEYRING", "")
+    keys: dict[str, str] = {}
+    for pair in [part.strip() for part in raw.split(",") if part.strip()]:
+        if ":" in pair:
+            kid, secret = pair.split(":", 1)
+            keys[kid.strip()] = secret.strip()
+    if active not in keys:
+        keys[active] = _token_secret()
+    return active, keys
+
+
 def _frontend_base_url() -> str | None:
     configured = os.getenv("LEX_FRONTEND_BASE_URL", "").strip().rstrip("/")
     return configured or None
@@ -250,6 +304,8 @@ def _ensure_state(app: FastAPI) -> None:
         app.state.users = {}
     if not hasattr(app.state, "trust_receipts"):
         app.state.trust_receipts = {}
+    if not hasattr(app.state, "run_telemetry"):
+        app.state.run_telemetry = []
 
 
 def _get_kernel() -> SovereignKernel:
@@ -283,9 +339,51 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _trust_receipt_signature(payload: dict[str, object]) -> str:
+def _trust_receipt_signature(payload: dict[str, object], key_id: str | None = None) -> str:
+    active_key, keys = _audit_keyring()
+    kid = key_id or active_key
+    secret = keys.get(kid, keys[active_key])
     body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hmac.new(_token_secret().encode("utf-8"), body, hashlib.sha256).hexdigest()
+    return hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+
+
+def _tier_value_prop(tier: str) -> str:
+    if tier == "enterprise":
+        return "Enterprise tier: procurement-grade evidence bundle, dynamic guardrails, and audit-committee traceability."
+    if tier == "pro":
+        return "Pro tier: governed output proof, signature verification, and operational trust receipts for customer assurance."
+    return "Free tier: baseline governed response with preview-grade trust visibility."
+
+
+def _badge_hash_for_receipt(receipt: TrustReceiptResponse) -> str:
+    canonical = f"{receipt.run_id}|{receipt.integrity_signature}|{receipt.M:.6f}|{receipt.intervention}"
+    return _sha256_text(canonical)
+
+
+def _persist_ledger_entry(receipt: TrustReceiptResponse, tier: str) -> None:
+    payload = receipt.dict()
+    with SessionLocal() as db:
+        existing = db.get(AuditLedgerEntry, receipt.run_id)
+        if existing is not None:
+            return
+        last_entry = db.query(AuditLedgerEntry).order_by(desc(AuditLedgerEntry.created_at)).first()
+        previous_chain_hash = last_entry.chain_hash if last_entry is not None else "0" * 64
+        entry_body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        chain_hash = _sha256_text(f"{previous_chain_hash}|{receipt.integrity_signature}|{entry_body}")
+        db.add(
+            AuditLedgerEntry(
+                run_id=receipt.run_id,
+                receipt_json=entry_body,
+                receipt_signature=receipt.integrity_signature,
+                signature_key_id=receipt.signature_key_id,
+                tier=tier,
+                value_proposition=_tier_value_prop(tier),
+                badge_hash=_badge_hash_for_receipt(receipt),
+                previous_chain_hash=previous_chain_hash,
+                chain_hash=chain_hash,
+            )
+        )
+        db.commit()
 
 
 def _govern_text(raw: str) -> tuple[str, str]:
@@ -421,6 +519,14 @@ def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> Decisi
             log_usage(db, identity)
             usage_today = get_today_usage(db, identity)
         remaining_free_runs = max(0, FREE_DAILY_LIMIT - usage_today)
+
+    app.state.run_telemetry.append({
+        "ts": _now().isoformat(),
+        "M": m_val,
+        "semantic_diff_score": semantic_diff_score,
+        "intervention": intervention,
+    })
+    app.state.run_telemetry = app.state.run_telemetry[-500:]
 
     return DecisionResponse(
         raw_output=raw_output,
@@ -669,7 +775,7 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/lex/trust-receipt", response_model=TrustReceiptResponse)
-    def trust_receipt(payload: TrustReceiptRequest):
+    def trust_receipt(payload: TrustReceiptRequest, request: Request, background_tasks: BackgroundTasks):
         now_dt = _now()
         run_id = payload.run_id or f"lexrun_{int(now_dt.timestamp())}_{secrets.token_hex(4)}"
         response = payload.response
@@ -692,9 +798,12 @@ def create_app() -> FastAPI:
             "M": response.M,
             "stability_timeline": timeline,
         }
-        signature = _trust_receipt_signature(receipt_payload)
-        receipt = TrustReceiptResponse(**receipt_payload, integrity_signature=signature)
+        active_key, _ = _audit_keyring()
+        signature = _trust_receipt_signature(receipt_payload, active_key)
+        receipt = TrustReceiptResponse(**receipt_payload, integrity_signature=signature, signature_key_id=active_key)
         app.state.trust_receipts[run_id] = receipt.dict()
+        tier = _get_plan(request)
+        background_tasks.add_task(_persist_ledger_entry, receipt, tier)
         return receipt
 
     @app.get("/lex/trust-receipt/{run_id}", response_model=TrustReceiptResponse)
@@ -705,12 +814,61 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Trust receipt not found")
         return TrustReceiptResponse(**found)
 
+    @app.get("/lex/trust-receipt/{run_id}/export", response_model=TrustReceiptExportResponse)
+    def export_trust_receipt(run_id: str):
+        with SessionLocal() as db:
+            row = db.get(AuditLedgerEntry, run_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Ledger entry not found")
+        receipt_payload = json.loads(row.receipt_json)
+        receipt = TrustReceiptResponse(**receipt_payload)
+        badge_hash = row.badge_hash
+        signed_export = {
+            "run_id": run_id,
+            "tier": row.tier,
+            "value_proposition": row.value_proposition,
+            "receipt_signature": row.receipt_signature,
+            "signature_key_id": row.signature_key_id,
+            "badge_hash": badge_hash,
+            "generated_at": receipt.generated_at,
+            "ledger_chain_hash": row.chain_hash,
+        }
+        export_hash = _trust_receipt_signature(signed_export)
+        return TrustReceiptExportResponse(
+            run_id=run_id,
+            receipt=receipt,
+            badge_hash=badge_hash,
+            export_hash=export_hash,
+            ledger_chain_hash=row.chain_hash,
+            signed_export=signed_export,
+        )
+
+    @app.get("/lex/audit-ledger/verify")
+    def verify_audit_chain(limit: int = 100):
+        with SessionLocal() as db:
+            entries = (
+                db.query(AuditLedgerEntry)
+                .order_by(AuditLedgerEntry.created_at.asc())
+                .limit(max(1, min(limit, 5000)))
+                .all()
+            )
+        if not entries:
+            return {"valid": True, "checked": 0, "reason": "No ledger entries yet"}
+        prev = "0" * 64
+        for idx, entry in enumerate(entries):
+            expected = _sha256_text(f"{prev}|{entry.receipt_signature}|{entry.receipt_json}")
+            if entry.previous_chain_hash != prev or entry.chain_hash != expected:
+                return {"valid": False, "checked": idx + 1, "reason": f"Chain mismatch at run_id={entry.run_id}"}
+            prev = entry.chain_hash
+        return {"valid": True, "checked": len(entries), "last_chain_hash": prev}
+
     @app.post("/lex/trust-receipt/verify", response_model=TrustReceiptVerifyResponse)
     def verify_trust_receipt(payload: TrustReceiptVerifyRequest):
         receipt = payload.receipt.dict()
         provided_signature = str(receipt.pop("integrity_signature", ""))
+        key_id = str(receipt.pop("signature_key_id", "v1"))
         receipt.pop("receipt_version", None)
-        expected_signature = _trust_receipt_signature(receipt)
+        expected_signature = _trust_receipt_signature(receipt, key_id)
         is_valid = hmac.compare_digest(expected_signature, provided_signature)
         reason = "Signature valid" if is_valid else "Signature mismatch"
         return TrustReceiptVerifyResponse(
@@ -718,6 +876,67 @@ def create_app() -> FastAPI:
             reason=reason,
             expected_signature=expected_signature,
         )
+
+    @app.get("/lex/audit/keys")
+    def audit_keys():
+        active, keys = _audit_keyring()
+        fingerprints = {kid: _sha256_text(secret)[:16] for kid, secret in keys.items()}
+        return {"active_key_id": active, "available_key_ids": sorted(keys.keys()), "fingerprints": fingerprints}
+
+
+    @app.post("/lex/sales-bridge", response_model=SalesBridgeResponse)
+    def sales_bridge(payload: SalesBridgeRequest):
+        with SessionLocal() as db:
+            row = db.get(AuditLedgerEntry, payload.run_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Trust receipt not found for run")
+        receipt = TrustReceiptResponse(**json.loads(row.receipt_json))
+        if receipt.M >= 0.92 and not receipt.intervention:
+            band = "green"
+            plan = "pro"
+        elif receipt.M >= 0.8:
+            band = "amber"
+            plan = "enterprise"
+        else:
+            band = "red"
+            plan = "enterprise"
+        action = f"Send governed evidence pack to {payload.buyer_role} at {payload.company_name} and schedule procurement review."
+        controls = [
+            f"Receipt hash chain anchored for run {payload.run_id}.",
+            f"Intervention={receipt.intervention} | M={receipt.M:.3f} | drift={receipt.semantic_diff_score:.3f}.",
+            "Signature-verifiable trust receipt available for audit committee.",
+            row.value_proposition,
+        ]
+        confidence = round(max(0.0, min(1.0, receipt.M - (0.1 if receipt.intervention else 0.0))), 4)
+        return SalesBridgeResponse(run_id=payload.run_id, risk_band=band, recommended_plan=plan, next_action=action, controls_summary=controls, confidence_score=confidence)
+
+    @app.get("/lex/stability-bounds", response_model=StabilityBoundsResponse)
+    def stability_bounds(window: int = 50):
+        _ensure_state(app)
+        series = app.state.run_telemetry[-max(5, min(window, 500)):]
+        if not series:
+            return StabilityBoundsResponse(lower_bound=0.85, upper_bound=1.0, window_size=0, intervention_rate=0.0, status="watch")
+        m_values = [float(item["M"]) for item in series]
+        lower = round(max(0.0, min(m_values) - 0.02), 4)
+        upper = round(min(1.0, max(m_values) + 0.02), 4)
+        interventions = sum(1 for item in series if bool(item["intervention"]))
+        rate = round(interventions / len(series), 4)
+        status = "stable" if lower >= 0.82 and rate <= 0.35 else "watch" if lower >= 0.7 else "alert"
+        return StabilityBoundsResponse(lower_bound=lower, upper_bound=upper, window_size=len(series), intervention_rate=rate, status=status)
+
+    @app.get("/lex/trust-receipt/{run_id}/badge", response_model=SovereigntyEvidenceResponse)
+    def sovereignty_badge(run_id: str):
+        with SessionLocal() as db:
+            row = db.get(AuditLedgerEntry, run_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Trust receipt not found")
+        receipt = TrustReceiptResponse(**json.loads(row.receipt_json))
+        color = "#22c55e" if receipt.M >= 0.9 else "#f59e0b" if receipt.M >= 0.8 else "#ef4444"
+        text = "SOVEREIGN VERIFIED"
+        sig = receipt.integrity_signature[:16]
+        svg = f"<svg xmlns='http://www.w3.org/2000/svg' width='860' height='220'><rect width='860' height='220' rx='16' fill='#020617'/><rect x='12' y='12' width='836' height='196' rx='12' fill='none' stroke='{color}' stroke-width='3'/><text x='36' y='72' fill='{color}' font-family='Inter,Arial' font-size='34' font-weight='700'>{text}</text><text x='36' y='116' fill='#e2e8f0' font-family='monospace' font-size='20'>run_id: {run_id}</text><text x='36' y='152' fill='#94a3b8' font-family='monospace' font-size='18'>sig: {sig}… | M={receipt.M:.3f} | intervention={str(receipt.intervention).lower()} | badge_hash={row.badge_hash[:12]}…</text></svg>"
+        summary = f"Visual proof generated from signed trust receipt for run {run_id}."
+        return SovereigntyEvidenceResponse(run_id=run_id, badge_svg=svg, evidence_summary=summary)
 
     return app
 
