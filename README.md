@@ -131,6 +131,36 @@ The app uses safe boot behavior:
 - Import-time kernel failure does **not** block startup.
 - `/health` returns `degraded: true` when bootstrap errors exist.
 
+### Frontend routing mode (important)
+
+By default, FastAPI serves the embedded frontend:
+- `GET /` → `app/static/index.html`
+- `GET /dashboard` → `app/static/console.html`
+
+If you want your deployed site to show the **Next.js frontend** instead, set:
+
+```bash
+LEX_FRONTEND_BASE_URL=https://your-nextjs-domain.com
+```
+
+Then the backend will redirect:
+- `GET /` → `https://your-nextjs-domain.com/`
+- `GET /dashboard` → `https://your-nextjs-domain.com/app`
+
+Use `GET /frontend/status` to verify which mode is active.
+
+Quick check:
+```bash
+python scripts/check_frontend_connection.py https://your-backend-domain.com
+```
+
+
+## Deployment Readiness
+
+For a production deployment checklist and hardening sequence, see `docs/deployment_readiness_next_steps.md`.
+
+To switch website traffic to the new Next.js frontend, follow `docs/frontend_cutover_guide.md`.
+
 ## Local Run
 
 ```bash

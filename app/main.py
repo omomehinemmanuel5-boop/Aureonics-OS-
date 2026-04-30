@@ -608,7 +608,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.mount("/static", StaticFiles(directory="app/static"), name="static")
+    frontend_base_url = os.getenv("LEX_FRONTEND_BASE_URL", "").strip().rstrip("/")
 
     @app.middleware("http")
     async def auth_subscription_middleware(request: Request, call_next):
