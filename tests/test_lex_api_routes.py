@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app, create_app
 from app.database import SessionLocal
-from app.models.entities import UsageLog
+from app.models.entities import AuditLedgerEntry, UsageLog
 
 
 client = TestClient(app)
@@ -184,3 +184,19 @@ def test_sales_bridge_stability_bounds_and_sovereignty_badge():
     badge_body = badge.json()
     assert "<svg" in badge_body["badge_svg"]
     assert badge_body["run_id"] == "run_audit_001"
+
+    export = client.get("/lex/trust-receipt/run_audit_001/export")
+    assert export.status_code == 200
+    export_body = export.json()
+    assert export_body["signed_export"]["badge_hash"] == export_body["badge_hash"]
+    assert len(export_body["export_hash"]) == 64
+
+    with SessionLocal() as db:
+        row = db.get(AuditLedgerEntry, "run_audit_001")
+        assert row is not None
+        row.tier = "tamper-attempt"
+        try:
+            db.commit()
+            assert False, "commit should fail for immutable audit ledger"
+        except Exception:
+            db.rollback()
