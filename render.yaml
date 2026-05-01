@@ -13,4 +13,32 @@ services:
         value: "1"
       - key: ENV
         value: "production"
+      - key: LEX_FRONTEND_BASE_URL
+        sync: false
+    autoDeploy: true
+
+  - type: web
+    name: lex-aureon-frontend
+    env: node
+    plan: starter
+    rootDir: frontend
+    buildCommand: |
+      npm ci
+      npm run build
+    startCommand: |
+      npm run start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: LEX_API_BASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_LEX_API_BASE_URL
+        sync: false
+      - key: SALES_CONTACT_EMAIL
+        sync: false
+      - key: SALES_PHONE_E164
+        sync: false
+      - key: MANUAL_INVOICE_TERMS_DAYS
+        value: "7"
     autoDeploy: true
