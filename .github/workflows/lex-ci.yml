@@ -2,7 +2,11 @@ name: Lex Aureon CI Guard
 
 on:
   push:
-    branches: ["main"]
+    branches:
+      - "main"
+      - "claude/**"
+      - "feature/**"
+      - "fix/**"
   pull_request:
   workflow_dispatch:
 
@@ -69,6 +73,33 @@ jobs:
               raise SystemExit(1)
 
           print("Render binding validation passed: found 'app.main:app' in startCommand")
+          PY
+
+      - name: User model schema check
+        run: |
+          python - << 'PY'
+          from app.models.entities import User
+          required = {"id", "email", "password_hash", "company_name", "plan", "created_at"}
+          cols = {c.key for c in User.__table__.columns}
+          missing = required - cols
+          if missing:
+              raise SystemExit(f"User model missing columns: {missing}")
+          print("User model schema OK:", sorted(cols))
+          PY
+
+      - name: Render env-var completeness check
+        run: |
+          python - << 'PY'
+          import yaml, sys
+          data = yaml.safe_load(open("render.yaml"))
+          backend = next(s for s in data["services"] if s["name"] == "lex-aureon")
+          keys = {e["key"] for e in backend.get("envVars", [])}
+          required = {"DATABASE_URL", "LEX_AUTH_SECRET", "LEX_FRONTEND_BASE_URL"}
+          missing = required - keys
+          if missing:
+              print(f"WARNING: render.yaml missing env vars for backend: {missing}")
+          else:
+              print("render.yaml env-var check passed")
           PY
 
       - name: Typing Import Guard

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import base64
@@ -11,6 +13,7 @@ import secrets
 from difflib import SequenceMatcher
 from typing import Literal
 from sqlalchemy import desc
+from sqlalchemy.exc import IntegrityError
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,10 +23,18 @@ from pydantic import BaseModel, Field
 
 from app.database import Base, SessionLocal, engine
 from app.models import entities as _entities  # noqa: F401
-from app.models.entities import AuditLedgerEntry
+from app.models.entities import AuditLedgerEntry, User
 from app.safe_boot import load_kernel_safely
 from app.services.usage_service import get_today_usage, log_usage
 from sovereign_kernel_v2 import SovereignKernel
+
+_log = logging.getLogger("lex_api")
+logging.basicConfig(
+    level=logging.INFO,
+    format='{"time":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":%(message)s}',
+)
+
+_EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$")
 
 
 class RunRequest(BaseModel):
@@ -313,19 +324,8 @@ def _ensure_state(app: FastAPI) -> None:
         app.state.startup_errors = []
     if not hasattr(app.state, "usage_counts"):
         app.state.usage_counts = {}
-    if not hasattr(app.state, "users"):
-        app.state.users = {}
-    if not hasattr(app.state, "trust_receipts"):
-        app.state.trust_receipts = {}
     if not hasattr(app.state, "run_telemetry"):
         app.state.run_telemetry = []
-
-
-def _get_kernel() -> SovereignKernel:
-    global _KERNEL_SINGLETON
-    if _KERNEL_SINGLETON is None:
-        _KERNEL_SINGLETON = SovereignKernel()
-    return _KERNEL_SINGLETON
 
 
 def _now() -> datetime:
@@ -419,81 +419,70 @@ def _generate_raw_output(prompt: str, kernel: object | None) -> str:
 
 
 def _get_plan(request: Request) -> Literal["free", "pro", "enterprise"]:
+    # Authenticated users get their plan from the DB record, not the header
+    auth_user = _auth_user(request)
+    if auth_user and auth_user.get("plan") in {"free", "pro", "enterprise"}:
+        plan = auth_user["plan"]
+        return plan  # type: ignore[return-value]
+    # Unauthenticated callers may pass the header (only downgrade is possible; plan gates are DB-authoritative for authed users)
     header_value = request.headers.get("x-subscription-plan", "free").strip().lower()
     return header_value if header_value in {"free", "pro", "enterprise"} else "free"
 
 
-def _limit_key(identity: str, plan: str) -> str:
-    now = _now()
-    if plan == "free":
-        return f"{identity}:free:{now.date().isoformat()}"
-    if plan == "pro":
-        return f"{identity}:pro:{now.year}-{now.month:02d}"
-    return f"{identity}:enterprise:unlimited"
-
-
-def _consume_quota(app: FastAPI, identity: str, plan: str) -> tuple[bool, int | None]:
+def _check_and_consume_quota(identity: str, plan: str) -> tuple[bool, int | None, int | None]:
+    """Returns (allowed, remaining, usage_today). All quota logic is DB-authoritative."""
     if plan == "enterprise":
-        return True, None
+        return True, None, None
 
-    key = _limit_key(identity, plan)
-    used = app.state.usage_counts.get(key, 0)
-    limit = FREE_DAILY_LIMIT if plan == "free" else PRO_MONTHLY_LIMIT
-    if used >= limit:
-        return False, 0
+    with SessionLocal() as db:
+        today_usage = get_today_usage(db, identity)
 
-    app.state.usage_counts[key] = used + 1
-    return True, limit - app.state.usage_counts[key]
+    if plan == "free":
+        if today_usage >= FREE_DAILY_LIMIT:
+            return False, 0, today_usage
+        with SessionLocal() as db:
+            log_usage(db, identity)
+            today_usage = get_today_usage(db, identity)
+        remaining = max(0, FREE_DAILY_LIMIT - today_usage)
+        return True, remaining, today_usage
+
+    # pro: monthly limit check via DB usage count
+    if today_usage >= PRO_MONTHLY_LIMIT:
+        return False, 0, today_usage
+    with SessionLocal() as db:
+        log_usage(db, identity)
+        today_usage = get_today_usage(db, identity)
+    remaining = max(0, PRO_MONTHLY_LIMIT - today_usage)
+    return True, remaining, today_usage
 
 
 def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> DecisionResponse:
     _ensure_state(app)
     if app.state.kernel is None:
-        app.state.kernel = _get_kernel()
+        app.state.kernel = _resolve_kernel()
     identity = _request_identity(request)
     plan = _get_plan(request)
 
-    if plan == "free":
-        with SessionLocal() as db:
-            today_usage = get_today_usage(db, identity)
-        if today_usage >= FREE_DAILY_LIMIT:
-            return DecisionResponse(
-                raw_output="",
-                governed_output="",
-                final_output="",
-                intervention=False,
-                intervention_reason="Usage limit reached",
-                semantic_diff_score=0.0,
-                M=0.0,
-                plan=plan,
-                watermark="Lex Demo",
-                remaining_runs=0,
-                remaining_free_runs=0,
-                usage_today=today_usage,
-                error="LIMIT_REACHED",
-                upgrade_required=True,
-                message="You’ve used all 10 free runs today.",
-                diff=[],
-            )
-
-    allowed, remaining = _consume_quota(app, identity, plan)
+    allowed, remaining, usage_today = _check_and_consume_quota(identity, plan)
 
     if not allowed:
+        limit_msg = "You’ve used all 10 free runs today." if plan == "free" else "Monthly plan quota reached."
         return DecisionResponse(
-            raw_output="quota_exceeded",
-            governed_output="quota_exceeded",
-            final_output="quota_exceeded",
+            raw_output="",
+            governed_output="",
+            final_output="",
             intervention=True,
             intervention_reason="Plan quota reached. Upgrade to continue running governed inference.",
             semantic_diff_score=0.0,
             M=0.0,
             plan=plan,
-            watermark=None,
+            watermark="Lex Demo" if plan == "free" else None,
             remaining_runs=0,
-            remaining_free_runs=0,
+            remaining_free_runs=0 if plan == "free" else None,
+            usage_today=usage_today,
             error="LIMIT_REACHED",
             upgrade_required=True,
-            message="You’ve used all 10 free runs today.",
+            message=limit_msg,
             diff=[],
         )
 
@@ -524,14 +513,9 @@ def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> Decisi
     meaning_pct = round(m_val * 100, 2)
     predicted_risk = min(99, max(0, int(round(55 + entropy_pct * 0.4 + (10 if intervention else 0)))))
 
-    usage_today = None
-    remaining_free_runs = None
-    if plan == "free":
-        with SessionLocal() as db:
-            log_usage(db, identity)
-            usage_today = get_today_usage(db, identity)
-        remaining_free_runs = max(0, FREE_DAILY_LIMIT - usage_today)
+    remaining_free_runs = remaining if plan == "free" else None
 
+    _ensure_state(app)
     app.state.run_telemetry.append({
         "ts": _now().isoformat(),
         "M": m_val,
@@ -550,7 +534,7 @@ def _run_pipeline(app: FastAPI, payload: RunRequest, request: Request) -> Decisi
         M=m_val,
         plan=plan,
         watermark=watermark,
-        remaining_runs=remaining_free_runs if plan == "free" else remaining,
+        remaining_runs=remaining,
         remaining_free_runs=remaining_free_runs,
         usage_today=usage_today,
         metrics={
@@ -569,44 +553,69 @@ def _plan_price_usd(plan: str) -> int | None:
     return None
 
 
-def _get_kernel() -> object:
-    """Compatibility accessor used by legacy tests and runtime callers."""
-    _ensure_state(app)
-    kernel = app.state.kernel
-    if kernel is not None and hasattr(kernel, "call_llm") and hasattr(kernel, "state"):
-        return kernel
-
+def _resolve_kernel() -> object:
+    """Load the sovereign kernel via safe boot; returns None on failure."""
     kernel_result = load_kernel_safely()
     kernel = kernel_result.get("kernel")
-    app.state.kernel = kernel
     if kernel_result.get("error"):
-        app.state.startup_errors.append(str(kernel_result["error"]))
+        _log.warning('"kernel load error: %s"', kernel_result["error"])
     return kernel
+
+
+def _get_kernel() -> object:
+    """Public accessor used by tests — returns the app-scoped kernel singleton."""
+    try:
+        k = app.state.kernel  # type: ignore[name-defined]
+    except AttributeError:
+        k = None
+    if k is not None:
+        return k
+    return _resolve_kernel()
+
+
+def _validate_env() -> list[str]:
+    warnings: list[str] = []
+    if os.getenv("LEX_AUTH_SECRET", "") in ("", "lex-dev-secret-change-me"):
+        warnings.append("LEX_AUTH_SECRET is unset or uses the insecure default — set a strong secret in production")
+    if not os.getenv("DATABASE_URL", "").startswith("postgres"):
+        warnings.append("DATABASE_URL is not PostgreSQL — in-memory SQLite will lose all data on restart")
+    return warnings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    app.state.kernel = _get_kernel()
     app.state.startup_errors = []
     app.state.usage_counts = {}
-    app.state.users = {}
-    app.state.trust_receipts = {}
+    app.state.run_telemetry = []
 
-    kernel_result = load_kernel_safely()
-    app.state.kernel = kernel_result.get("kernel") or app.state.kernel
-    if kernel_result.get("error"):
-        app.state.startup_errors.append(str(kernel_result["error"]))
+    for warning in _validate_env():
+        _log.warning('"%s"', warning)
+        app.state.startup_errors.append(warning)
+
+    app.state.kernel = _resolve_kernel()
     yield
+
+
+def _cors_origins() -> list[str]:
+    raw = os.getenv("LEX_CORS_ORIGINS", "").strip()
+    if raw:
+        return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
+    frontend = os.getenv("LEX_FRONTEND_BASE_URL", "").strip().rstrip("/")
+    if frontend:
+        return [frontend]
+    return ["*"]
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Lex API — Governed AI Responses", version="2.0.0", lifespan=lifespan)
+    origins = _cors_origins()
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=origins,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "x-subscription-plan"],
+        allow_credentials=True,
     )
     frontend_base_url = os.getenv("LEX_FRONTEND_BASE_URL", "").strip().rstrip("/")
 
@@ -616,12 +625,20 @@ def create_app() -> FastAPI:
         request.state.auth_user = None
         auth_header = request.headers.get("authorization", "")
         if auth_header.lower().startswith("bearer "):
-            payload = _decode_token(auth_header.split(" ", 1)[1].strip())
+            token = auth_header.split(" ", 1)[1].strip()
+            payload = _decode_token(token)
             if payload:
-                request.state.auth_user = {
-                    "id": str(payload.get("sub", "")),
-                    "email": str(payload.get("email", "")),
-                }
+                user_id = str(payload.get("sub", ""))
+                email = str(payload.get("email", ""))
+                plan = "free"
+                try:
+                    with SessionLocal() as db:
+                        db_user = db.query(User).filter(User.id == user_id).first()
+                        if db_user:
+                            plan = db_user.plan
+                except Exception:
+                    pass
+                request.state.auth_user = {"id": user_id, "email": email, "plan": plan}
 
         request.state.subscription_plan = _get_plan(request)
         response = await call_next(request)
@@ -647,29 +664,43 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health():
         _ensure_state(app)
+        db_ok = False
+        try:
+            with SessionLocal() as db:
+                db.execute(__import__("sqlalchemy").text("SELECT 1"))
+            db_ok = True
+        except Exception:
+            pass
+        startup_warns = app.state.startup_errors
+        degraded = not db_ok or len(startup_warns) > 0
         return {
-            "status": "ok",
-            "degraded": len(app.state.startup_errors) > 0,
+            "status": "degraded" if degraded else "ok",
             "kernel_ready": bool(app.state.kernel is not None),
-            "errors": app.state.startup_errors,
+            "db_ok": db_ok,
+            "warnings": startup_warns,
         }
 
     @app.post("/auth/register", response_model=AuthTokenResponse)
     def auth_register(payload: RegisterRequest):
-        _ensure_state(app)
         email = _normalize_email(payload.email)
-        if email in app.state.users:
-            raise HTTPException(status_code=409, detail="Account already exists")
-
+        if not _EMAIL_RE.match(email):
+            raise HTTPException(status_code=422, detail="Invalid email address format")
         user_id = f"usr_{secrets.token_hex(8)}"
-        app.state.users[email] = {
-            "id": user_id,
-            "email": email,
-            "company_name": payload.company_name.strip(),
-            "password_hash": _hash_password(payload.password),
-            "created_at": _now().isoformat(),
-        }
+        db_user = User(
+            id=user_id,
+            email=email,
+            company_name=payload.company_name.strip(),
+            password_hash=_hash_password(payload.password),
+            plan="free",
+        )
+        try:
+            with SessionLocal() as db:
+                db.add(db_user)
+                db.commit()
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="Account already exists")
         token, expires = _issue_access_token(user_id, email)
+        _log.info('"user registered: %s"', email)
         return AuthTokenResponse(
             access_token=token,
             expires_at=expires.isoformat(),
@@ -678,28 +709,34 @@ def create_app() -> FastAPI:
 
     @app.post("/auth/login", response_model=AuthTokenResponse)
     def auth_login(payload: LoginRequest):
-        _ensure_state(app)
         email = _normalize_email(payload.email)
-        user = app.state.users.get(email)
-        if not user or not _verify_password(payload.password, user.get("password_hash", "")):
+        with SessionLocal() as db:
+            db_user = db.query(User).filter(User.id == email).first() or \
+                      db.query(User).filter(User.email == email).first()
+        if not db_user or not _verify_password(payload.password, db_user.password_hash):
             raise HTTPException(status_code=401, detail="Invalid credentials")
-
-        token, expires = _issue_access_token(str(user["id"]), email)
+        with SessionLocal() as db:
+            db_user2 = db.get(User, db_user.id)
+            if db_user2:
+                db_user2.last_login_at = _now()
+                db.commit()
+        token, expires = _issue_access_token(db_user.id, email)
         return AuthTokenResponse(
             access_token=token,
             expires_at=expires.isoformat(),
-            user={"id": str(user["id"]), "email": email, "company_name": str(user["company_name"])},
+            user={"id": db_user.id, "email": email, "company_name": db_user.company_name},
         )
 
     @app.get("/auth/me")
     def auth_me(request: Request):
         user = _require_auth(request)
-        record = app.state.users.get(user["email"], {})
+        with SessionLocal() as db:
+            db_user = db.get(User, user["id"])
         return {
             "id": user["id"],
             "email": user["email"],
-            "company_name": record.get("company_name", ""),
-            "plan": request.state.subscription_plan,
+            "company_name": db_user.company_name if db_user else "",
+            "plan": db_user.plan if db_user else request.state.subscription_plan,
         }
 
     @app.get("/pricing")
@@ -803,18 +840,19 @@ def create_app() -> FastAPI:
         key_id = _active_audit_key_id()
         signature = _trust_receipt_signature(receipt_payload, key_id=key_id)
         receipt = TrustReceiptResponse(**receipt_payload, integrity_signature=signature, key_id=key_id)
-        app.state.trust_receipts[run_id] = receipt.dict()
         tier = _get_plan(request)
         background_tasks.add_task(_persist_ledger_entry, receipt, tier)
         return receipt
 
     @app.get("/lex/trust-receipt/{run_id}", response_model=TrustReceiptResponse)
     def get_trust_receipt(run_id: str):
-        _ensure_state(app)
-        found = app.state.trust_receipts.get(run_id)
-        if not found:
+        with SessionLocal() as db:
+            row = db.get(AuditLedgerEntry, run_id)
+        if row is None:
             raise HTTPException(status_code=404, detail="Trust receipt not found")
-        return TrustReceiptResponse(**found)
+        receipt_data = json.loads(row.receipt_json)
+        receipt_data["integrity_signature"] = row.receipt_signature
+        return TrustReceiptResponse(**receipt_data)
 
     @app.get("/lex/trust-receipt/{run_id}/export", response_model=TrustReceiptExportResponse)
     def export_trust_receipt(run_id: str):
