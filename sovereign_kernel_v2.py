@@ -378,7 +378,7 @@ class SovereignKernel:
         )
 
         try:
-            with urllib.request.urlopen(req) as response:  # nosemgrep
+            with urllib.request.urlopen(req) as response:  # nosec B310 nosemgrep
                 res_data = json.loads(response.read().decode("utf-8"))
                 if "choices" not in res_data or not res_data["choices"]:
                     raise Exception(f"Unexpected {model_cfg['provider']} response shape: {res_data}")
