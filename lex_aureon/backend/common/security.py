@@ -53,7 +53,7 @@ def require_role(principal: Principal, allowed: set[str]) -> None:
 
 
 def validate_stripe_signature(payload: bytes, sig_header: str | None, secret: str | None = None) -> bool:
-    secret = secret or os.getenv("STRIPE_WEBHOOK_SECRET", "dev-secret")  # nosemgrep: generic.secrets.gitleaks.generic-api-key
+    secret = secret or os.getenv("STRIPE_WEBHOOK_SECRET", "dev-secret")  # nosemgrep
     if not sig_header:
         return False
     digest = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()

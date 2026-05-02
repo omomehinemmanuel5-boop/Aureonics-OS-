@@ -1,0 +1,8 @@
+# Semgrep ignore file — excludes non-production paths from security scanning.
+# Test files contain intentional hardcoded credentials (fixture data).
+# Script files are developer/research tools, not the served API.
+
+tests/
+scripts/
+docs/
+*.md

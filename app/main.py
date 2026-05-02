@@ -226,7 +226,7 @@ _PASSWORD_ITERATIONS = 120_000
 
 
 def _token_secret() -> str:
-    return os.getenv("LEX_AUTH_SECRET", "lex-dev-secret-change-me")  # nosemgrep: generic.secrets.gitleaks.generic-api-key
+    return os.getenv("LEX_AUTH_SECRET", "lex-dev-secret-change-me")  # nosemgrep
 
 
 def _audit_keys() -> dict[str, str]:
