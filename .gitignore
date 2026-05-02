@@ -1,4 +1,11 @@
 __pycache__/
 *.pyc
+*.pyo
 .venv/
-aureonics.db
+*.db
+*.sqlite
+*.sqlite3
+logs/
+*.jsonl
+.env
+.env.local
