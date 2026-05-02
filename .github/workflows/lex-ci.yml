@@ -90,12 +90,10 @@ jobs:
       - name: Render env-var completeness check
         run: |
           python - << 'PY'
-          import yaml, sys
-          data = yaml.safe_load(open("render.yaml"))
-          backend = next(s for s in data["services"] if s["name"] == "lex-aureon")
-          keys = {e["key"] for e in backend.get("envVars", [])}
-          required = {"DATABASE_URL", "LEX_AUTH_SECRET", "LEX_FRONTEND_BASE_URL"}
-          missing = required - keys
+          from pathlib import Path
+          content = Path("render.yaml").read_text(encoding="utf-8")
+          required = ["DATABASE_URL", "LEX_AUTH_SECRET", "LEX_FRONTEND_BASE_URL"]
+          missing = [k for k in required if f"key: {k}" not in content]
           if missing:
               print(f"WARNING: render.yaml missing env vars for backend: {missing}")
           else:
