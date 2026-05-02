@@ -72,13 +72,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Semgrep quick scan
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Bandit security scan
         run: |
-          pip install semgrep
-          semgrep --config p/default --error --exclude node_modules .
+          pip install bandit
+          bandit -r app/ lex_aureon/ sovereign_kernel_v2.py -ll --exclude tests,scripts -f txt
 
   stripe-config-validation:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: rg "STRIPE_WEBHOOK_SECRET|billing/stripe/webhook" lex_aureon/backend/api_gateway/main.py
+      - name: Stripe webhook endpoint present in API gateway
+        run: grep -qE "billing/stripe/webhook" lex_aureon/backend/api_gateway/main.py
+      - name: STRIPE_WEBHOOK_SECRET referenced in codebase
+        run: grep -rqE "STRIPE_WEBHOOK_SECRET" lex_aureon/backend/

@@ -1,9 +1,25 @@
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, event
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, event
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
+    company_name: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+    plan: Mapped[str] = mapped_column(String(24), nullable=False, default="free")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    last_login_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
+    __table_args__ = (UniqueConstraint("email", name="uq_users_email"),)
 
 
 class Signal(Base):
